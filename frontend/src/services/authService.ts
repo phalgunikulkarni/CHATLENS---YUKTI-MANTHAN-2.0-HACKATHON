@@ -24,6 +24,8 @@ export interface AuthService {
   login(req: LoginRequest): Promise<LoginResponse>;
   register(req: RegisterRequest): Promise<LoginResponse>;
   logout(): Promise<void>;
+  /** Update the current session's display name (safe frontend-only edit). */
+  updateProfile(name: string): Promise<User>;
   /** Restore a session from persisted storage on app start, if any. */
   restore(): { user: User; token: string } | null;
 }
@@ -80,6 +82,18 @@ class DevAuthService implements AuthService {
     const session = { user, token: makeToken() };
     persist(session, true);
     return session;
+  }
+
+  async updateProfile(name: string): Promise<User> {
+    // Safe frontend-only edit: updates the display name in the stored session.
+    // No sensitive data is written.
+    const current = this.restore();
+    if (!current) throw new Error("NO_SESSION");
+    const user: User = { ...current.user, name: name.trim() || current.user.name };
+    const session = { user, token: current.token };
+    const inLocal = localStorage.getItem(SESSION_KEY) !== null;
+    persist(session, inLocal);
+    return user;
   }
 
   async logout(): Promise<void> {

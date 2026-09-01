@@ -13,6 +13,7 @@ export interface AuthContextValue extends AuthState {
   login: (req: LoginRequest) => Promise<void>;
   register: (req: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
+  updateProfile: (name: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -60,6 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ status: "unauthenticated", user: null, token: null, error: null });
   }, []);
 
+  const updateProfile = useCallback(async (name: string) => {
+    const user = await authService.updateProfile(name);
+    setState((s) => ({ ...s, user }));
+  }, []);
+
   const clearError = useCallback(() => {
     setState((s) => (s.status === "error" ? { ...s, status: "unauthenticated", error: null } : s));
   }, []);
@@ -71,9 +77,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       register,
       logout,
+      updateProfile,
       clearError,
     }),
-    [state, login, register, logout, clearError]
+    [state, login, register, logout, updateProfile, clearError]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

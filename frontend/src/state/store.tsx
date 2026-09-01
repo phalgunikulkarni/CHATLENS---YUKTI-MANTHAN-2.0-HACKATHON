@@ -1,6 +1,7 @@
 import { createContext, useReducer, type Dispatch, type ReactNode } from "react";
 import { actionsReducer, initialActionsState, type ActionsAction } from "./actions.slice";
 import { connectorsReducer, initialConnectorsState, type ConnectorsAction } from "./connectors.slice";
+import { settingsReducer, initialSettingsState, type SettingsAction } from "./settings.slice";
 import { conversationReducer, initialConversationState, type ConversationAction } from "./conversation.slice";
 import { ingestionReducer, initialIngestionState, type IngestionAction } from "./ingestion.slice";
 import { initialResultsState, resultsReducer, type ResultsAction } from "./results.slice";
@@ -13,6 +14,7 @@ export type AppAction =
   | IngestionAction
   | ActionsAction
   | ConnectorsAction
+  | SettingsAction
   | UiAction;
 
 export const initialRootState: RootState = {
@@ -21,6 +23,7 @@ export const initialRootState: RootState = {
   ingestion: initialIngestionState,
   actions: initialActionsState,
   connectors: initialConnectorsState,
+  settings: initialSettingsState,
   ui: initialUiState,
 };
 
@@ -31,6 +34,7 @@ export function rootReducer(state: RootState, action: AppAction): RootState {
     ingestion: ingestionReducer(state.ingestion, action as IngestionAction),
     actions: actionsReducer(state.actions, action as ActionsAction),
     connectors: connectorsReducer(state.connectors, action as ConnectorsAction),
+    settings: settingsReducer(state.settings, action as SettingsAction),
     ui: uiReducer(state.ui, action as UiAction),
   };
 }

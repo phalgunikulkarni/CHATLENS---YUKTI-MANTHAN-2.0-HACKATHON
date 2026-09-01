@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ConnectorMemorySource } from "../api/types";
-import { useActions, useConversation, useDispatch, useResults, useUi } from "../hooks";
+import { useActions, useConversation, useDispatch, useResults, useSettings, useUi } from "../hooks";
 import { useChatLens } from "../hooks/useChatLens";
 import { SearchHero } from "../features/results/SearchHero";
 import { ResultsHeader } from "../features/results/ResultsHeader";
@@ -22,8 +22,9 @@ export function SearchWorkspace() {
   const actions = useActions();
   const ui = useUi();
   const dispatch = useDispatch();
+  const settings = useSettings();
   const c = useChatLens();
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<"grid" | "list">(settings.defaultView);
   const [source, setSource] = useState<SourceFilterValue>("all");
 
   // Sources actually present in the current results (no invented options).
@@ -33,10 +34,10 @@ export function SearchWorkspace() {
     return [...set];
   }, [results.items]);
 
-  const visibleItems = useMemo(
-    () => (source === "all" ? results.items : results.items.filter((r) => r.memorySource === source)),
-    [results.items, source]
-  );
+  const visibleItems = useMemo(() => {
+    const filtered = source === "all" ? results.items : results.items.filter((r) => r.memorySource === source);
+    return filtered.slice(0, settings.resultsPerPage);
+  }, [results.items, source, settings.resultsPerPage]);
 
   // Drawer only opens for a real, currently-loaded result (no demo lookup).
   const openResult = results.items.find((r) => r.id === ui.drawerOpenForId);

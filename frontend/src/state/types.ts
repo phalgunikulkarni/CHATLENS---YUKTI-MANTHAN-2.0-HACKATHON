@@ -8,6 +8,7 @@ import type {
   TurnResponse,
 } from "../api/types";
 import type { ConnectorsState } from "./connectors.slice";
+import type { SettingsState } from "./settings.slice";
 
 export interface TurnTranscriptEntry {
   id: string;
@@ -105,6 +106,7 @@ export interface UiState {
 export interface RootState {
   conversation: ConversationState;
   connectors: ConnectorsState;
+  settings: SettingsState;
   results: ResultsState;
   ingestion: IngestionState;
   actions: ActionsState;

@@ -6,6 +6,7 @@ export {
   useIngestion,
   useActions,
   useConnectors,
+  useSettings,
   useUi,
 } from "./useStore";
 export { useMediaQuery } from "./useMediaQuery";
