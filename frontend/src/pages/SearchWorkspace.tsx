@@ -3,6 +3,7 @@ import type { ConnectorMemorySource } from "../api/types";
 import { useActions, useConversation, useDispatch, useResults, useSettings, useUi } from "../hooks";
 import { useChatLens } from "../hooks/useChatLens";
 import { SearchHero } from "../features/results/SearchHero";
+import { SearchingOverlay } from "../features/home/SearchingOverlay";
 import { ResultsHeader } from "../features/results/ResultsHeader";
 import { MemoryGrid } from "../features/results/MemoryGrid";
 import { SourceFilter, type SourceFilterValue } from "../features/results/SourceFilter";
@@ -12,7 +13,6 @@ import { ActionPanel } from "../features/actions/ActionPanel";
 import { SummaryPanel } from "../features/actions/SummaryPanel";
 import { RoadmapPanel } from "../features/actions/RoadmapPanel";
 import { ConfirmDialog } from "../features/actions/ConfirmDialog";
-import { SkeletonGrid } from "../components/SkeletonGrid";
 import { EmptyState, ErrorState, NotConnectedState } from "../components/States";
 import { Icon } from "../components/Icon";
 
@@ -64,7 +64,7 @@ export function SearchWorkspace() {
             )}
 
             {results.loading ? (
-              <SkeletonGrid count={6} />
+              <SearchingOverlay query={results.echoedQuery} />
             ) : results.notConnected ? (
               <NotConnectedState />
             ) : results.error ? (
@@ -72,8 +72,8 @@ export function SearchWorkspace() {
             ) : visibleItems.length === 0 ? (
               <EmptyState
                 icon="search"
-                title="No memories matched"
-                message="Try adding a memory clue - for example the type of image, a topic, or something you remember seeing."
+                title="Nothing matched this memory."
+                message="Try describing another clue - a color, place, topic, text or object."
               />
             ) : (
               <MemoryGrid
