@@ -468,3 +468,62 @@ I'd put this at:
 ChatLens/
 └── docs/
     └── decisions.md
+
+Tech stack used
+Layer Use Recommendation
+Frontend Web UI React + Vite
+Styling UI Tailwind CSS
+Backend API/orchestration Python + FastAPI
+OCR Extract image text PaddleOCR
+Visual
+embeddings
+Image understanding OpenAI CLIP
+Text embeddings Semantic text search Sentence
+Transformers
+Vector DB Embedding storage/search ChromaDB
+Keyword search Exact OCR matching SQLite FTS5
+Image processing Resize/preprocess OpenCV + Pillow
+Agent/LLM Conversational intelligence Gemini API
+Database Metadata SQLite
+Calendar Optional WOW feature Google Calendar API
+Development AI coding Kiro
+Version control Team Git + GitHub
+---
+
+# 24. ML/Retrieval Setup — Supporting Library Notes
+
+### Decision — ChromaDB is the final, approved MVP vector store
+ChromaDB is the selected vector store for the MVP, chosen over the earlier
+"FAISS / ChromaDB" direction because it stores embeddings and metadata together,
+which is more convenient for the hackathon retrieval pipeline. This supersedes any
+older FAISS reference in `architecture.md`. FAISS is not used and is not installed.
+
+### Context
+The ML/retrieval slice (CLIP visual embeddings, PaddleOCR, Sentence Transformers,
+ChromaDB, OpenCV, Pillow) was set up on macOS Apple Silicon (arm64), Python 3.11,
+into the existing project virtual environment. Two supporting-library decisions were
+recorded here per the requirements rule that any package beyond the mandatory stack
+must be justified in this document.
+
+### Decision — CLIP loaded via Hugging Face `transformers`
+The mandatory stack specifies **OpenAI CLIP**. The genuine OpenAI CLIP weights
+(`openai/clip-vit-base-patch32`) are loaded through the Hugging Face `transformers`
+loader together with `torch`, rather than the original `openai/clip` GitHub package.
+
+Reason: the original package installs from git and pins older torch versions, which is
+fragile on arm64. `transformers` provides a pip-installable, arm64-friendly loader for
+the same OpenAI CLIP model and weights. This is a loader choice, not a model change —
+the visual/text embedding model is still OpenAI CLIP (512-dim shared space).
+
+### Decision — `PyYAML` pinned to 6.0.2
+`paddlex` (a transitive dependency of `paddleocr`) hard-pins `PyYAML==6.0.2`, while
+`kubernetes` (a transitive dependency of `chromadb`) requests `pyyaml>=6.0.3`. PyYAML
+is pinned to `6.0.2` to satisfy paddlex's hard requirement. The kubernetes constraint
+is a soft warning only; kubernetes is not exercised by ChromaDB's local persistent
+mode, so this does not affect the ML/retrieval slice at runtime.
+
+### Verification
+All six dependencies import successfully and a functional smoke test passed
+(ChromaDB store+query, Sentence Transformers 384-dim encode, CLIP model load with a
+512-dim shared image/text space, torch MPS available). See `ml/requirements.txt`,
+`ml/requirements.lock.txt`, and `ml/verify_setup.py`.

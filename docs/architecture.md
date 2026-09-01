@@ -188,11 +188,13 @@ Embedding references
 Application state
 5.3 Vector Store
 
-Initial direction:
+Approved MVP vector store:
 
-FAISS / ChromaDB
+ChromaDB
 
-Stores and retrieves image/vector representations for similarity search.
+Stores and retrieves image/vector representations for similarity search, keeping
+embeddings and their metadata together. (Supersedes the earlier "FAISS / ChromaDB"
+direction; see decisions.md #24.)
 
 6. Search Architecture
 
@@ -562,7 +564,7 @@ Frontend	React
 Backend	Python + FastAPI
 OCR	PaddleOCR / Tesseract
 Visual Embeddings	CLIP
-Vector Search	FAISS / ChromaDB
+Vector Search	ChromaDB
 Database	SQLite
 Image Processing	Python / OpenCV
 Intelligent Agent	Conversational LLM

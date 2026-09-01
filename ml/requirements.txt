@@ -1,0 +1,27 @@
+# ChatLens — ML/Retrieval slice dependencies
+# Scope: CLIP visual embeddings, PaddleOCR text extraction,
+#        Sentence Transformers text embeddings, ChromaDB vector index,
+#        OpenCV + Pillow image processing.
+# Mandatory stack per docs/decisions.md. Do not add packages outside this scope
+# without recording justification in docs/decisions.md (see requirements Req 1.3).
+
+# --- Visual embeddings: OpenAI CLIP ---
+# OpenAI CLIP weights (openai/clip-vit-base-patch32) loaded via HuggingFace
+# transformers, which provides a pip-installable, arm64-friendly loader for the
+# original OpenAI CLIP model. torch is CLIP's required runtime.
+torch>=2.2
+transformers>=4.40
+
+# --- OCR: PaddleOCR (CPU) ---
+paddlepaddle>=3.0
+paddleocr>=3.0
+
+# --- Text/semantic embeddings ---
+sentence-transformers>=2.7
+
+# --- Vector store ---
+chromadb>=0.5
+
+# --- Image processing ---
+opencv-python>=4.9
+pillow>=10.0
