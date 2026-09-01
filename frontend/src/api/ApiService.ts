@@ -1,5 +1,7 @@
-﻿import type {
+import type {
   ExplanationSignal,
+  ImageQaRequest,
+  ImageQaResponse,
   ImageStatus,
   RefineRequest,
   RoadmapRequest,
@@ -22,6 +24,8 @@ export interface ApiService {
   search(req: SearchRequest): Promise<TurnResponse>;
   refine(req: RefineRequest): Promise<TurnResponse>;
   getExplanation(imageId: string): Promise<ExplanationSignal[]>;
+  /** Conversational Q&A about a specific retrieved image (LLM-backed). */
+  askAboutImage(req: ImageQaRequest): Promise<ImageQaResponse>;
   summarize(req: SummarizeRequest): Promise<SummaryResponse>;
   roadmap(req: RoadmapRequest): Promise<RoadmapResponse>;
   proposeSchedule(req: ScheduleProposeRequest): Promise<ScheduleProposal>;

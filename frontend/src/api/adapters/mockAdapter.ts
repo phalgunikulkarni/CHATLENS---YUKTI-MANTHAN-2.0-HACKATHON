@@ -1,6 +1,8 @@
-﻿import type { ApiService } from "../ApiService";
+import type { ApiService } from "../ApiService";
 import type {
   ExplanationSignal,
+  ImageQaRequest,
+  ImageQaResponse,
   ImageStatus,
   MemoryClue,
   RefineRequest,
@@ -185,6 +187,24 @@ export class MockAdapter implements ApiService {
   async getExplanation(imageId: string): Promise<ExplanationSignal[]> {
     await this.simulate();
     return byId(imageId)?.explanation ?? [];
+  }
+  async askAboutImage(req: ImageQaRequest): Promise<ImageQaResponse> {
+    await this.simulate();
+    // SYNTHETIC demo answer grounded loosely in the image's OCR text (if any).
+    // NOT a real LLM response - the backend owns real image Q&A.
+    const mem = byId(req.imageId);
+    const q = req.question.toLowerCase();
+    let answer: string;
+    if (q.includes("error") || q.includes("line") || q.includes("cause")) {
+      answer = mem?.ocrSnippet
+        ? `Based on the extracted text, this image shows: "${mem.ocrSnippet}". The relevant part appears near the highlighted line.`
+        : "I can describe what the retrieval signals suggest, but detailed answers require the ChatLens backend.";
+    } else if (mem?.ocrSnippet) {
+      answer = `This memory is "${mem.title ?? "an image"}". Its text reads: "${mem.ocrSnippet}".`;
+    } else {
+      answer = `This memory is "${mem?.title ?? "an image"}". Connect the ChatLens backend for detailed answers about its content.`;
+    }
+    return { imageId: req.imageId, answer };
   }
   async summarize(req: SummarizeRequest): Promise<SummaryResponse> {
     await this.simulate();

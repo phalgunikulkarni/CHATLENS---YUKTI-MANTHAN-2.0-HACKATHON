@@ -2,6 +2,8 @@ import type { ApiService } from "../ApiService";
 import { NotConnectedError } from "../errors";
 import type {
   ExplanationSignal,
+  ImageQaRequest,
+  ImageQaResponse,
   ImageStatus,
   RefineRequest,
   RoadmapRequest,
@@ -27,6 +29,7 @@ export class NotConnectedAdapter implements ApiService {
   async search(_req: SearchRequest): Promise<TurnResponse> { this.fail(); }
   async refine(_req: RefineRequest): Promise<TurnResponse> { this.fail(); }
   async getExplanation(_imageId: string): Promise<ExplanationSignal[]> { this.fail(); }
+  async askAboutImage(_req: ImageQaRequest): Promise<ImageQaResponse> { this.fail(); }
   async summarize(_req: SummarizeRequest): Promise<SummaryResponse> { this.fail(); }
   async roadmap(_req: RoadmapRequest): Promise<RoadmapResponse> { this.fail(); }
   async proposeSchedule(_req: ScheduleProposeRequest): Promise<ScheduleProposal> { this.fail(); }

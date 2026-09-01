@@ -32,20 +32,27 @@ export function HistoryPage() {
       </div>
       <div style={{ marginTop: 14 }}>
         {searchHistory.map((h) => (
-          <button
-            className="history-item"
-            key={h.id}
-            onClick={() => rerun(h.query)}
-            style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
-          >
-            <div>
+          <div className="history-item" key={h.id}>
+            <button
+              className="history-main"
+              onClick={() => rerun(h.query)}
+              style={{ background: "none", border: "none", textAlign: "left", cursor: "pointer", flex: 1, minWidth: 0 }}
+              aria-label={`Search again: ${h.query}`}
+            >
               <div className="history-q">{h.query}</div>
               <div className="history-meta">
                 {formatRelative(h.at)} - {h.resultCount} {h.resultCount === 1 ? "result" : "results"}
               </div>
+            </button>
+            <div className="history-item-actions">
+              <button className="btn btn-subtle" onClick={() => rerun(h.query)}>
+                <Icon name="search" size={14} /> Search again
+              </button>
+              <button className="icon-btn" aria-label={`Delete search: ${h.query}`} onClick={() => c.removeHistoryItem(h.id)}>
+                <Icon name="close" size={16} />
+              </button>
             </div>
-            <span className="icon-btn" aria-hidden="true"><Icon name="arrow" size={16} /></span>
-          </button>
+          </div>
         ))}
       </div>
     </div>

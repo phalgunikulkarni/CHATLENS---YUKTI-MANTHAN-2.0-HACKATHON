@@ -98,12 +98,15 @@ export function useChatLens() {
     [dispatch, conversation.activeClues, conversation.sessionId, results.echoedQuery, results.items]
   );
 
-  const toggleSelect = useCallback((id: string) => dispatch({ type: "RESULT_SELECTION_TOGGLED", id }), [dispatch]);
+  const toggleSelect = useCallback((id: string) => {
+    const willSelect = !results.selectedIds.includes(id);
+    dispatch({ type: "RESULT_SELECTION_TOGGLED", id });
+    dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: willSelect ? "Memory selected" : "Memory deselected", tone: "info" } });
+  }, [dispatch, results.selectedIds]);
   const openDrawer = useCallback((id: string) => dispatch({ type: "DRAWER_OPENED", id }), [dispatch]);
   const closeDrawer = useCallback(() => dispatch({ type: "DRAWER_CLOSED" }), [dispatch]);
 
-  const summarize = useCallback(async () => {
-    const ids = results.selectedIds.length > 0 ? results.selectedIds : results.items.map((r) => r.id);
+  const summarizeIds = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
     dispatch({ type: "ACTION_STARTED" });
     try {
@@ -111,16 +114,17 @@ export function useChatLens() {
       dispatch({ type: "SUMMARY_RECEIVED", summary });
       dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Summary ready", tone: "success" } });
     } catch (err) {
-      if (isNotConnected(err)) dispatch({ type: "ACTION_NOT_CONNECTED" });
-      else {
+      if (isNotConnected(err)) {
+        dispatch({ type: "ACTION_NOT_CONNECTED" });
+        dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Summarize needs the backend", tone: "error" } });
+      } else {
         dispatch({ type: "ACTION_FAILED", message: "Could not summarize." });
         dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Summarize failed", tone: "error" } });
       }
     }
-  }, [dispatch, results.selectedIds, results.items, conversation.sessionId]);
+  }, [dispatch, conversation.sessionId]);
 
-  const makeRoadmap = useCallback(async () => {
-    const ids = results.selectedIds.length > 0 ? results.selectedIds : results.items.map((r) => r.id);
+  const roadmapIds = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
     dispatch({ type: "ACTION_STARTED" });
     try {
@@ -128,10 +132,27 @@ export function useChatLens() {
       dispatch({ type: "ROADMAP_RECEIVED", roadmap });
       dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Roadmap ready", tone: "success" } });
     } catch (err) {
-      if (isNotConnected(err)) dispatch({ type: "ACTION_NOT_CONNECTED" });
-      else dispatch({ type: "ACTION_FAILED", message: "Could not build roadmap." });
+      if (isNotConnected(err)) {
+        dispatch({ type: "ACTION_NOT_CONNECTED" });
+        dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Roadmap needs the backend", tone: "error" } });
+      } else {
+        dispatch({ type: "ACTION_FAILED", message: "Could not build roadmap." });
+      }
     }
-  }, [dispatch, results.selectedIds, results.items, conversation.sessionId]);
+  }, [dispatch, conversation.sessionId]);
+
+  const summarize = useCallback(() => {
+    const ids = results.selectedIds.length > 0 ? results.selectedIds : results.items.map((r) => r.id);
+    return summarizeIds(ids);
+  }, [summarizeIds, results.selectedIds, results.items]);
+
+  const makeRoadmap = useCallback(() => {
+    const ids = results.selectedIds.length > 0 ? results.selectedIds : results.items.map((r) => r.id);
+    return roadmapIds(ids);
+  }, [roadmapIds, results.selectedIds, results.items]);
+
+  const summarizeImage = useCallback((id: string) => summarizeIds([id]), [summarizeIds]);
+  const roadmapImage = useCallback((id: string) => roadmapIds([id]), [roadmapIds]);
 
   const proposeSchedule = useCallback(async (steps: { order: number; title: string; detail?: string }[]) => {
     dispatch({ type: "ACTION_STARTED" });
@@ -162,7 +183,15 @@ export function useChatLens() {
     dispatch({ type: "PROPOSAL_CLEARED" });
   }, [dispatch]);
 
-  const clearHistory = useCallback(() => dispatch({ type: "HISTORY_CLEARED" }), [dispatch]);
+  const clearHistory = useCallback(() => {
+    dispatch({ type: "HISTORY_CLEARED" });
+    dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Search history cleared", tone: "info" } });
+  }, [dispatch]);
+
+  const removeHistoryItem = useCallback((id: string) => {
+    dispatch({ type: "HISTORY_ITEM_REMOVED", id });
+    dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Search removed", tone: "info" } });
+  }, [dispatch]);
 
   const queueFiles = useCallback((files: File[]) => {
     const items: UploadItem[] = files.map((f) => {
@@ -186,7 +215,8 @@ export function useChatLens() {
 
   return {
     runSearch, runRefine, removeClue, toggleSelect, openDrawer, closeDrawer,
-    summarize, makeRoadmap, proposeSchedule, confirmSchedule, cancelSchedule,
-    clearHistory, queueFiles, removeUpload,
+    summarize, makeRoadmap, summarizeImage, roadmapImage,
+    proposeSchedule, confirmSchedule, cancelSchedule,
+    clearHistory, removeHistoryItem, queueFiles, removeUpload,
   };
 }

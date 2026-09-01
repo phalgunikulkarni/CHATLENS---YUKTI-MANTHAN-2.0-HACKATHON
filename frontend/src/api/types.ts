@@ -220,3 +220,17 @@ export interface ConnectorConnectResult {
   /** Auth URL to open, if the backend uses a redirect-based flow. */
   authUrl?: string;
 }
+
+// ---- Conversational image Q&A ----
+
+export interface ImageQaRequest {
+  imageId: string;
+  question: string;
+  /** Prior turns for this image, so the backend can keep context. */
+  history?: { role: "user" | "assistant"; text: string }[];
+}
+
+export interface ImageQaResponse {
+  imageId: string;
+  answer: string;
+}

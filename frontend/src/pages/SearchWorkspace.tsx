@@ -113,7 +113,16 @@ export function SearchWorkspace() {
         </div>
       )}
 
-      {openResult && <ImageDetailDrawer result={openResult} onClose={c.closeDrawer} />}
+      {openResult && (
+        <ImageDetailDrawer
+          result={openResult}
+          selected={results.selectedIds.includes(openResult.id)}
+          onClose={c.closeDrawer}
+          onToggleSelect={c.toggleSelect}
+          onSummarize={c.summarizeImage}
+          onRoadmap={c.roadmapImage}
+        />
+      )}
       {ui.confirmDialogOpen && actions.proposal && (
         <ConfirmDialog
           proposal={actions.proposal}

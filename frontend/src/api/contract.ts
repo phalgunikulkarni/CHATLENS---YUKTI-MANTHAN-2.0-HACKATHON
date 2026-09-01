@@ -1,4 +1,4 @@
-﻿/**
+/**
  * PROPOSED Backend API contract - REQUIRES BACKEND TEAM SIGN-OFF.
  *
  * These endpoints are NOT implemented in this repository. They describe the
@@ -12,6 +12,8 @@ export const ENDPOINTS = {
   refine: "/api/refine",
   /** GET - retrieval evidence for a result (or embed on SearchResult.explanation). */
   explanation: (id: string) => `/api/results/${id}/explanation`,
+  /** POST - conversational Q&A about a specific retrieved image (LLM-backed). */
+  imageQa: "/api/images/qa",
   /** POST - summarize the selected memories. */
   summarize: "/api/actions/summarize",
   /** POST - turn memories into an ordered plan. */

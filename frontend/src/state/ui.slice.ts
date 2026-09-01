@@ -44,6 +44,7 @@ export type UiAction =
   | { type: "TOAST_DISMISSED"; id: string }
   | { type: "SEARCH_RECORDED"; entry: SearchHistoryEntry }
   | { type: "HISTORY_CLEARED" }
+  | { type: "HISTORY_ITEM_REMOVED"; id: string }
   | { type: "SESSION_MEMORY_ADDED"; id: string }
   | { type: "IMAGE_REMINDER_SET"; show: boolean };
 
@@ -77,6 +78,11 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
     case "HISTORY_CLEARED":
       persistHistory([]);
       return { ...state, searchHistory: [] };
+    case "HISTORY_ITEM_REMOVED": {
+      const next = state.searchHistory.filter((e) => e.id !== action.id);
+      persistHistory(next);
+      return { ...state, searchHistory: next };
+    }
     case "SESSION_MEMORY_ADDED":
       return state.sessionMemoryIds.includes(action.id)
         ? state

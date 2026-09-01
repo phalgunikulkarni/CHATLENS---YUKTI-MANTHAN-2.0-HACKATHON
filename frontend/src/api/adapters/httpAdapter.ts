@@ -1,7 +1,9 @@
-﻿import { ENDPOINTS } from "../contract";
+import { ENDPOINTS } from "../contract";
 import type { ApiService } from "../ApiService";
 import type {
   ExplanationSignal,
+  ImageQaRequest,
+  ImageQaResponse,
   ImageStatus,
   RefineRequest,
   RoadmapRequest,
@@ -46,6 +48,9 @@ export class HttpAdapter implements ApiService {
   }
   getExplanation(imageId: string) {
     return this.get<ExplanationSignal[]>(ENDPOINTS.explanation(imageId));
+  }
+  askAboutImage(req: ImageQaRequest) {
+    return this.post<ImageQaResponse>(ENDPOINTS.imageQa, req);
   }
   summarize(req: SummarizeRequest) {
     return this.post<SummaryResponse>(ENDPOINTS.summarize, req);
