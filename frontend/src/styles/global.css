@@ -602,3 +602,8 @@ ul { margin: 0; }
   .history-item { flex-wrap: wrap; }
   .history-item-actions { width: 100%; justify-content: flex-end; }
 }
+
+/* ---------- Login field validation + demo tag row ---------- */
+.auth-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.auth-title-row .demo-tag { margin-bottom: 0; }
+.field-error { color: #ef4444; font-size: 12.5px; margin: -10px 0 14px; font-weight: 600; }
