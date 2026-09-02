@@ -54,8 +54,8 @@ export function LibraryPage() {
     return (
       <EmptyState
         icon="library"
-        title="No memories yet"
-        message="Upload your images to start building your visual memory."
+        title="Your visual memory starts here."
+        message="Upload images to build your searchable visual archive."
         action={
           <button className="btn btn-primary" onClick={() => dispatch({ type: "VIEW_CHANGED", view: "upload" })}>
             <Icon name="upload" size={16} /> Upload images

@@ -1,8 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { isSendable } from "../../utils/validation";
 import { Icon } from "../../components/Icon";
 import { SearchModes } from "../home/SearchModes";
-import { MemoryMoments } from "../home/MemoryMoments";
 import { MemoryCanvas } from "../home/MemoryCanvas";
 
 interface Props {
@@ -10,29 +9,26 @@ interface Props {
   onUpload: () => void;
 }
 
-/** Static suggestion pool (NOT user history) used for contextual hints as the
- *  user types. Clearly example content, never presented as real activity. */
-const SUGGESTIONS = [
-  "Find my Python login error",
-  "Find my Python code screenshots",
-  "Find my Python notes",
-  "Find my CN notes about OSI",
-  "Find my handwritten OSI notes",
-  "Find my notes about database normalization",
-  "Find the receipt around INR 800",
-  "Find my project architecture diagram",
-  "Find my lecture slides",
-  "Find that confused guy meme",
+/**
+ * Generic UI-guidance prompts. These are NOT example queries or user data - they
+ * only guide how to phrase a memory. They never pre-populate or run a search.
+ */
+const GUIDANCE = [
+  "Describe an image you remember...",
+  "Search by text that was inside an image...",
+  "Search by what was happening in the image...",
 ];
 
 /**
- * Search-first home experience: AI badge, strong heading, an expanding search
- * bar with live contextual suggestions, multimodal mode indicators, interactive
- * memory moments, and a subtle floating memory canvas.
+ * Search-first home experience. Intentionally generic: no hardcoded sample
+ * memories, example queries, or fabricated personal content. The search box is
+ * never pre-populated. Actual memories/results come only from user uploads or
+ * the backend.
  */
 export function SearchHero({ onSearch, onUpload }: Props) {
   const [q, setQ] = useState("");
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const blurTimer = useRef<number | null>(null);
 
   const submit = (value: string) => {
@@ -41,17 +37,13 @@ export function SearchHero({ onSearch, onUpload }: Props) {
     setQ("");
   };
 
-  const suggestions = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return [];
-    return SUGGESTIONS.filter((s) => s.toLowerCase().includes(term)).slice(0, 5);
-  }, [q]);
-
-  const showSuggest = focused && suggestions.length > 0;
+  // Guidance is shown on focus while empty. It is help text only - selecting one
+  // focuses the input for the user to type; it never runs a search itself.
+  const showGuidance = focused && q.trim().length === 0;
 
   return (
     <section className="hero-search">
-      <MemoryCanvas onPick={submit} />
+      <MemoryCanvas />
 
       <div className="hero-search-inner">
         <span className="ai-badge"><Icon name="sparkles" size={13} /> AI VISUAL MEMORY</span>
@@ -61,30 +53,29 @@ export function SearchHero({ onSearch, onUpload }: Props) {
         <div className={`searchbar-xl ${focused ? "focused" : ""}`}>
           <Icon name="search" size={22} className="search-icon" />
           <input
+            ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onFocus={() => { if (blurTimer.current) window.clearTimeout(blurTimer.current); setFocused(true); }}
             onBlur={() => { blurTimer.current = window.setTimeout(() => setFocused(false), 120); }}
             onKeyDown={(e) => { if (e.key === "Enter") submit(q); }}
-            placeholder="Try: Find the handwritten CN notes about OSI..."
+            placeholder="Describe what you remember..."
             aria-label="Describe what you remember"
-            aria-autocomplete="list"
           />
           <button className="btn btn-primary" onClick={() => submit(q)} disabled={!isSendable(q)}>
             <Icon name="search" size={16} /> Search
           </button>
 
-          {showSuggest && (
-            <div className="suggest-pop" role="listbox">
-              {suggestions.map((s) => (
+          {showGuidance && (
+            <div className="suggest-pop" role="list" aria-label="How to search">
+              {GUIDANCE.map((g) => (
                 <button
-                  key={s}
-                  role="option"
-                  aria-selected={false}
-                  className="suggest-item"
-                  onMouseDown={(e) => { e.preventDefault(); setQ(s); submit(s); }}
+                  key={g}
+                  role="listitem"
+                  className="suggest-item guidance"
+                  onMouseDown={(e) => { e.preventDefault(); inputRef.current?.focus(); }}
                 >
-                  <Icon name="search" size={14} /> {s}
+                  <Icon name="sparkles" size={14} /> {g}
                 </button>
               ))}
             </div>
@@ -98,9 +89,6 @@ export function SearchHero({ onSearch, onUpload }: Props) {
             <Icon name="upload" size={16} /> Upload images
           </button>
         </div>
-
-        <div className="moment-label">Or start from a memory moment</div>
-        <MemoryMoments onPick={submit} />
       </div>
     </section>
   );
