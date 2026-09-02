@@ -802,3 +802,27 @@ ul { margin: 0; }
   .floater, .searching-orb { animation: none; }
   .searchbar-xl { transition: none; }
 }
+
+/* ---------- Connector connection flow modal ---------- */
+.connector-modal { max-width: 460px; }
+.perm-panel { }
+.perm-panel-label { font-size: 12.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 10px; }
+.perm-panel-list { list-style: none; padding: 0; margin: 0 0 16px; display: flex; flex-direction: column; gap: 9px; }
+.perm-panel-list li { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; color: var(--text); }
+.perm-panel-list li svg { color: #16a34a; flex-shrink: 0; }
+.perm-panel-note { display: flex; gap: 10px; align-items: flex-start; background: rgba(124,92,252,0.06); border: 1px solid rgba(124,92,252,0.18); border-radius: 12px; padding: 12px 13px; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.perm-panel-note svg { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+
+.conn-progress { text-align: center; padding: 20px 8px 8px; }
+.conn-orb { width: 62px; height: 62px; border-radius: 50%; margin: 0 auto 16px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--accent), var(--secondary)); animation: orbpulse 1.5s ease-in-out infinite; }
+.conn-progress-title { font-size: 16px; font-weight: 800; color: var(--navy); }
+.conn-progress-sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+.conn-success { text-align: center; padding: 12px 8px 4px; animation: popin 0.25s ease; }
+.conn-success .success-check { margin: 0 auto 14px; }
+.conn-success h3 { font-size: 18px; color: var(--navy); }
+.conn-success p { font-size: 13.5px; color: var(--muted); margin-top: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .conn-orb { animation: none; }
+}

@@ -1,21 +1,23 @@
 import { useState } from "react";
 import type { ConnectorType } from "../api/types";
-import { useConnectors } from "../hooks";
+import { useConnectors, useDispatch } from "../hooks";
 import { useConnectorActions } from "../hooks/useConnectorActions";
 import { ConnectorCard } from "../features/connectors/ConnectorCard";
-import { ConnectModal } from "../features/connectors/ConnectModal";
-import { ManageConnectorModal } from "../features/connectors/ManageConnectorModal";
+import { ConnectorModal } from "../features/connectors/ConnectorModal";
+import { DisconnectConfirmation } from "../features/connectors/DisconnectConfirmation";
 import { Icon } from "../components/Icon";
+import { uid } from "../utils/format";
 
 export function ConnectorsPage() {
   const { items, busy } = useConnectors();
   const actions = useConnectorActions();
+  const dispatch = useDispatch();
   const [connecting, setConnecting] = useState<ConnectorType | null>(null);
-  const [managing, setManaging] = useState<ConnectorType | null>(null);
+  const [disconnecting, setDisconnecting] = useState<ConnectorType | null>(null);
 
-  const connectorFor = (type: ConnectorType | null) => items.find((c) => c.type === type);
-  const connectTarget = connectorFor(connecting);
-  const manageTarget = connectorFor(managing);
+  const connectTarget = items.find((c) => c.type === connecting);
+
+  const openMemories = () => dispatch({ type: "VIEW_CHANGED", view: "library" });
 
   return (
     <div>
@@ -31,8 +33,8 @@ export function ConnectorsPage() {
             connector={c}
             busy={Boolean(busy[c.type])}
             onConnect={() => setConnecting(c.type)}
-            onManage={() => setManaging(c.type)}
-            onSync={() => actions.sync(c.type)}
+            onOpenMemories={openMemories}
+            onDisconnect={() => setDisconnecting(c.type)}
           />
         ))}
       </div>
@@ -41,34 +43,35 @@ export function ConnectorsPage() {
         <div className="privacy-icon"><Icon name="eye" size={18} /></div>
         <div>
           <strong>Your memories, your control.</strong>
-          <p>Connect only the sources you want ChatLens to search. Connector permissions are managed by
-          the sign-in and backend system, and you can disconnect any source at any time.</p>
+          <p>Your connected sources are used only to make your visual memories searchable. Connector
+          permissions are managed by the sign-in and backend system, and you can disconnect any source
+          at any time.</p>
         </div>
       </section>
 
       {connectTarget && (
-        <ConnectModal
+        <ConnectorModal
           connector={connectTarget}
-          busy={Boolean(busy[connectTarget.type])}
           onCancel={() => setConnecting(null)}
-          onContinue={async () => {
-            await actions.connect(connectTarget.type);
+          onConnected={() => {
+            actions.markConnected(connectTarget.type);
+            dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Connector connected", tone: "success" } });
             setConnecting(null);
           }}
         />
       )}
 
-      {manageTarget && (
-        <ManageConnectorModal
-          connector={manageTarget}
-          busy={Boolean(busy[manageTarget.type])}
-          onSync={() => actions.sync(manageTarget.type)}
-          onPause={() => actions.pauseSync(manageTarget.type)}
-          onDisconnect={async () => {
-            await actions.disconnect(manageTarget.type);
-            setManaging(null);
+      {disconnecting && (
+        <DisconnectConfirmation
+          type={disconnecting}
+          busy={Boolean(busy[disconnecting])}
+          onCancel={() => setDisconnecting(null)}
+          onConfirm={async () => {
+            const type = disconnecting;
+            await actions.disconnect(type);
+            dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Connector disconnected", tone: "info" } });
+            setDisconnecting(null);
           }}
-          onClose={() => setManaging(null)}
         />
       )}
     </div>

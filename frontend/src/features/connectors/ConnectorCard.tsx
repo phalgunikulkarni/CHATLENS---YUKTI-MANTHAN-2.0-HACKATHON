@@ -8,11 +8,11 @@ interface Props {
   connector: Connector;
   busy: boolean;
   onConnect: () => void;
-  onManage: () => void;
-  onSync: () => void;
+  onOpenMemories: () => void;
+  onDisconnect: () => void;
 }
 
-export function ConnectorCard({ connector, busy, onConnect, onManage, onSync }: Props) {
+export function ConnectorCard({ connector, busy, onConnect, onOpenMemories, onDisconnect }: Props) {
   const meta = CONNECTOR_META[connector.type];
   const connected = connector.status === "connected";
 
@@ -33,11 +33,11 @@ export function ConnectorCard({ connector, busy, onConnect, onManage, onSync }: 
       <div className="connector-actions">
         {connected ? (
           <>
-            <button className="btn btn-subtle" onClick={onSync} disabled={busy}>
-              <Icon name="history" size={15} /> Sync now
+            <button className="btn btn-subtle" onClick={onOpenMemories} disabled={busy}>
+              <Icon name="library" size={15} /> Open memories
             </button>
-            <button className="btn btn-ghost" onClick={onManage} disabled={busy}>
-              <Icon name="sparkles" size={15} /> Manage
+            <button className="btn btn-ghost" onClick={onDisconnect} disabled={busy}>
+              <Icon name="close" size={15} /> Disconnect
             </button>
           </>
         ) : (

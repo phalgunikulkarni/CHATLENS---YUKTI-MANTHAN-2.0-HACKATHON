@@ -5,6 +5,7 @@ import { MockAdapter } from "./adapters/mockAdapter";
 import { NotConnectedAdapter } from "./adapters/notConnectedAdapter";
 import { HttpConnectorService } from "./adapters/httpConnectorService";
 import { NotConnectedConnectorService } from "./adapters/notConnectedConnectorService";
+import { DemoConnectorService } from "./adapters/demoConnectorService";
 
 /**
  * Builds the API_Service and selects an adapter, in priority order:
@@ -31,6 +32,9 @@ export function createApiService(): ApiService {
 export function createConnectorService(): ConnectorService {
   const url = import.meta.env.VITE_API_BASE_URL?.trim();
   if (url) return new HttpConnectorService(url);
+  // Demo mode (explicit opt-in) exercises the full connect flow without a backend.
+  if (import.meta.env.VITE_USE_MOCK === "true") return new DemoConnectorService();
+  // Default: no backend -> connectors honestly report not-connected / unable-to-connect.
   return new NotConnectedConnectorService();
 }
 
