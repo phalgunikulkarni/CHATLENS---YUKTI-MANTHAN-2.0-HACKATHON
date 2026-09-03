@@ -1,18 +1,21 @@
-import json
-import uuid
-from typing import List
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
-import schemas
-from retrieval import hybrid_search
 import models
 from database import engine, SessionLocal
+from schemas import (
+    SearchRequest, SearchResponse, MessageRequest, 
+    ExplanationResponse, SummarizeRequest, SummarizeResponse,
+    RoadmapRequest, RoadmapResponse, ImageResponse
+)
+from datetime import datetime
+import uuid
+import ingestion
 
+# Create tables in SQLite
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="ChatLens API", description="AI-powered personal visual memory search engine")
+app = FastAPI(title="ChatLens API")
 
-# Dependency
 def get_db():
     db = SessionLocal()
     try:
@@ -24,133 +27,92 @@ def get_db():
 def health_check():
     return {"status": "ok"}
 
-@app.post("/images", response_model=schemas.ImageResponse)
-def upload_image(request: schemas.ImageUploadRequest, db: Session = Depends(get_db)):
-    # Stubbed file saving and AI processing. 
-    image_id = f"img_{uuid.uuid4().hex[:8]}"
-    meta_json = json.dumps(request.metadata) if request.metadata else None
-    
-    db_image = models.Image(
-        image_id=image_id,
-        image_reference=request.image_reference,
-        source=request.source,
-        timestamp=request.timestamp,
-        ocr_text="Mock OCR text generated upon upload",
-        metadata_json=meta_json
-    )
-    db.add(db_image)
-    db.commit()
-    db.refresh(db_image)
-    
-    meta = json.loads(db_image.metadata_json) if db_image.metadata_json else None
-    return schemas.ImageResponse(
-        image_id=db_image.image_id,
-        image_reference=db_image.image_reference,
-        source=db_image.source,
-        timestamp=db_image.timestamp,
-        ocr_text=db_image.ocr_text,
-        metadata=meta,
-        processing_state="completed"
-    )
+from fastapi import BackgroundTasks
 
-@app.get("/images", response_model=List[schemas.ImageResponse])
-def list_images(db: Session = Depends(get_db)):
-    results = db.query(models.Image).all()
-    images = []
-    for r in results:
-        meta = json.loads(r.metadata_json) if r.metadata_json else None
-        images.append(schemas.ImageResponse(
-            image_id=r.image_id,
-            image_reference=r.image_reference,
-            source=r.source,
-            timestamp=r.timestamp,
-            ocr_text=r.ocr_text,
-            metadata=meta,
-            processing_state="completed"
-        ))
-    return images
+@app.post("/images", response_model=ImageResponse)
+def upload_image(background_tasks: BackgroundTasks, file: UploadFile = File(...), source: str = Form(None), db: Session = Depends(get_db)):
+    db_image = ingestion.save_uploaded_image(db, file, source)
+    
+    # Trigger background processing
+    from processing.pipeline import process_image_task
+    background_tasks.add_task(process_image_task, db_image.id)
+    
+    return db_image
 
-@app.get("/images/{image_id}", response_model=schemas.ImageResponse)
+@app.get("/images/{image_id}", response_model=ImageResponse)
 def get_image(image_id: str, db: Session = Depends(get_db)):
-    r = db.query(models.Image).filter(models.Image.image_id == image_id).first()
-    if not r:
+    db_image = db.query(models.Image).filter(models.Image.id == image_id).first()
+    if not db_image:
         raise HTTPException(status_code=404, detail="Image not found")
-    meta = json.loads(r.metadata_json) if r.metadata_json else None
-    return schemas.ImageResponse(
-        image_id=r.image_id,
-        image_reference=r.image_reference,
-        source=r.source,
-        timestamp=r.timestamp,
-        ocr_text=r.ocr_text,
-        metadata=meta,
-        processing_state="completed"
+    return db_image
+
+@app.post("/search", response_model=SearchResponse)
+def search(request: SearchRequest, db: Session = Depends(get_db)):
+    from retrieval.engine import hybrid_search
+    from schemas import SearchResult
+    
+    # Track the session
+    session_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    db_session = models.SearchSession(id=session_id, created_at=now, updated_at=now, active_query=request.query)
+    db_context = models.SearchContext(session_id=session_id, original_intent=request.query, updated_query=request.query)
+    
+    db.add(db_session)
+    db.add(db_context)
+    db.commit()
+    
+    # Run retrieval
+    raw_results = hybrid_search(db, request.query, request.limit)
+    
+    results = []
+    for r in raw_results:
+        # We'll stub thumbnail_or_image_url for now since we don't have a serve route for images yet
+        img = db.query(models.Image).filter(models.Image.id == r["image_id"]).first()
+        url = f"/images/{r['image_id']}/file" if img else ""
+        
+        # We map OCR matches to strings for the matched_signals array to fit our schema
+        matched_signals = []
+        if r["signals"]["visual_score"] > 0:
+            matched_signals.append(f"Visual Score: {r['signals']['visual_score']:.2f}")
+        if r["signals"]["text_score"] > 0:
+            matched_signals.append(f"Text Score: {r['signals']['text_score']:.2f}")
+            if r["signals"]["ocr_matches"]:
+                matched_signals.append(f"OCR Matched: {r['signals']['ocr_matches'][0]}")
+                
+        results.append(SearchResult(
+            image_id=r["image_id"],
+            score=r["final_score"],
+            thumbnail_or_image_url=url,
+            matched_signals=matched_signals
+        ))
+        
+    return SearchResponse(
+        session_id=session_id,
+        effective_query=request.query,
+        results=results
     )
 
-@app.post("/search", response_model=schemas.SearchResponse)
-def search(request: schemas.SearchRequest, db: Session = Depends(get_db)):
-    # Stubbed to call retrieval.py text search
-    results = hybrid_search(db, request.query)
-    
-    search_results = []
-    for r in results:
-        img_resp = schemas.ImageResponse(
-            image_id=r.image_id,
-            image_reference=r.image_reference,
-            source=r.source,
-            timestamp=r.timestamp,
-            ocr_text=r.ocr_text,
-            metadata=r.metadata,
-            processing_state="completed"
-        )
-        search_results.append(schemas.SearchResult(
-            image=img_resp,
-            score=0.95,
-            signals={"ocr_match": True, "semantic_similarity": 0.8}
-        ))
-    return schemas.SearchResponse(results=search_results)
+@app.post("/search-sessions/{session_id}/messages", response_model=SearchResponse)
+def refine_search(session_id: str, request: MessageRequest):
+    # Stub response
+    return SearchResponse(
+        session_id=session_id,
+        effective_query="updated mock query based on refinement",
+        results=[]
+    )
 
-@app.post("/conversations/{conversation_id}/messages", response_model=schemas.SearchResponse)
-def add_message(conversation_id: str, request: schemas.MessageRequest, db: Session = Depends(get_db)):
-    # Stubbed conversational refinement
-    results = hybrid_search(db, request.message)
-    
-    search_results = []
-    for r in results:
-        img_resp = schemas.ImageResponse(
-            image_id=r.image_id,
-            image_reference=r.image_reference,
-            source=r.source,
-            timestamp=r.timestamp,
-            ocr_text=r.ocr_text,
-            metadata=r.metadata,
-            processing_state="completed"
-        )
-        search_results.append(schemas.SearchResult(
-            image=img_resp,
-            score=0.98,
-            signals={"clue_match": True, "conversational_context": 0.9}
-        ))
-    return schemas.SearchResponse(results=search_results)
-
-@app.get("/search-results/{result_id}/explanation", response_model=schemas.ExplanationResponse)
+@app.get("/search-results/{result_id}/explanation", response_model=ExplanationResponse)
 def get_explanation(result_id: str):
-    # Stubbed explanation
-    return schemas.ExplanationResponse(
-        explanation="Matched based on OCR text and semantic similarity to your requested memory clues.",
-        evidence_signals={"ocr_matched_terms": ["python", "error"], "semantic_score": 0.88, "visual_match": False}
-    )
+    # Stub response
+    return ExplanationResponse(explanation="Mock explanation for retrieving result.")
 
-@app.post("/actions/summarize", response_model=schemas.SummarizeResponse)
-def summarize_images(request: schemas.SummarizeRequest):
-    # Stubbed summarization
-    return schemas.SummarizeResponse(
-        summary=f"This is a mock AI summary of {len(request.image_ids)} images. It extracts the core themes and facts across the selected visual memories."
-    )
+@app.post("/actions/summarize", response_model=SummarizeResponse)
+def summarize(request: SummarizeRequest):
+    # Stub response
+    return SummarizeResponse(summary="Mock summary of the selected memories.")
 
-@app.post("/actions/roadmap", response_model=schemas.RoadmapResponse)
-def generate_roadmap(request: schemas.RoadmapRequest):
-    # Stubbed roadmap generation
-    goal_text = f" to achieve: {request.goal}" if request.goal else ""
-    return schemas.RoadmapResponse(
-        roadmap=f"Mock actionable roadmap{goal_text}:\n1. Review the retrieved visual notes.\n2. Synthesize information into a document.\n3. Execute the next steps."
-    )
+@app.post("/actions/roadmap", response_model=RoadmapResponse)
+def roadmap(request: RoadmapRequest):
+    # Stub response
+    return RoadmapResponse(roadmap="Mock roadmap:\n1. Step one\n2. Step two")

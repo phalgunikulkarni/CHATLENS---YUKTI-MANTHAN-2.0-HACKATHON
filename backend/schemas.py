@@ -1,39 +1,34 @@
-from datetime import datetime
-from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
-
-class ImageRecord(BaseModel):
-    image_id: str
-    image_reference: str
-    source: str
-    timestamp: datetime
-    ocr_text: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+from typing import Optional, List
+from datetime import datetime
 
 class ImageResponse(BaseModel):
-    image_id: str
-    image_reference: str
-    source: str
-    timestamp: datetime
-    ocr_text: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
-    processing_state: str = "completed"
-
-class ImageUploadRequest(BaseModel):
-    image_reference: str
-    source: str
-    timestamp: datetime
-    metadata: Optional[Dict[str, Any]] = None
+    id: str
+    original_filename: str
+    stored_path: str
+    source: Optional[str] = None
+    mime_type: str
+    file_size: int
+    width: Optional[int] = None
+    height: Optional[int] = None
+    captured_at: Optional[datetime] = None
+    created_at: datetime
+    processing_status: str
+    processing_error: Optional[str] = None
 
 class SearchRequest(BaseModel):
     query: str
+    limit: int = 10
 
 class SearchResult(BaseModel):
-    image: ImageResponse
+    image_id: str
     score: float
-    signals: Dict[str, Any]
+    thumbnail_or_image_url: str
+    matched_signals: List[str]
 
 class SearchResponse(BaseModel):
+    session_id: str
+    effective_query: str
     results: List[SearchResult]
 
 class MessageRequest(BaseModel):
@@ -41,7 +36,6 @@ class MessageRequest(BaseModel):
 
 class ExplanationResponse(BaseModel):
     explanation: str
-    evidence_signals: Dict[str, Any]
 
 class SummarizeRequest(BaseModel):
     image_ids: List[str]
@@ -51,7 +45,6 @@ class SummarizeResponse(BaseModel):
 
 class RoadmapRequest(BaseModel):
     image_ids: List[str]
-    goal: Optional[str] = None
 
 class RoadmapResponse(BaseModel):
     roadmap: str
