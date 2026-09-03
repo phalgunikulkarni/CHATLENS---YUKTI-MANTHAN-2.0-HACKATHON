@@ -64,14 +64,30 @@ The conversational LLM is a **core component of the MVP**.
 
 It is not a separate chatbot placed beside the search system.
 
+ChatLens uses **one** conversational intelligent agent (orchestrator). We are **not** implementing a complex multi-agent architecture.
+
+The conversational LLM is the **orchestration and interaction layer around the retrieval engine**. It is responsible for:
+
+- Understanding user intent.
+- Maintaining relevant conversation context.
+- Extracting and updating memory clues.
+- Formulating retrieval queries.
+- Refining previous searches.
+- Deciding when retrieval / re-ranking is triggered.
+- Interpreting results.
+- Generating evidence-based explanations.
+- Invoking supported actions.
+
+The LLM is **not** another retrieval modality. It does **not** replace OCR, CLIP, embeddings, vector search, or metadata retrieval — it decides how and when those signals are used and how to interpret them.
+
 It acts as the intelligent layer connecting:
 
 ```text
 User Conversation
         ↕
-Intelligent Agent
+Intelligent Agent (single orchestrator)
         ↕
-Retrieval
+Retrieval Engine
         ↕
 Retrieved Memories
         ↕
@@ -81,25 +97,21 @@ Decision
 
 The agent must use conversation context to improve retrieval.
 
+A follow-up message should add or modify memory clues and refine the existing search, preserving relevant prior context, rather than starting an unrelated search.
+
 Example:
 
 User:
-Find my CN notes about OSI.
+Find the screenshot with the error message.
 
 ChatLens:
 [Results]
 
 User:
-No, I remember they were handwritten.
+The one with the red button.
 
 ChatLens:
-[Updated results]
-
-User:
-There was also a large diagram.
-
-ChatLens:
-[Further refined results]
+[Refined results]
 
 The new message should update the previous search context, rather than being treated as an unrelated query.
 
@@ -114,13 +126,17 @@ Decision
 
 ChatLens will use hybrid retrieval.
 
-The retrieval system can combine:
+The retrieval engine is a **separate capability** used by the orchestrator/backend. It is responsible for finding and ranking relevant visual memories using, where applicable:
 
 OCR/text matching
-Semantic similarity
+Semantic/text embeddings
 CLIP visual similarity
 Available metadata
-User-provided memory clues
+User-provided memory / query clues
+Ranking and re-ranking
+
+The orchestrator decides how and when to use retrieval and how to interpret its results. The LLM does not perform OCR, CLIP embedding, or vector search itself.
+
 Reason
 
 Different image types require different signals.
@@ -179,20 +195,22 @@ Example:
 
 Why this result?
 
-✓ OCR matched "OSI Model"
-✓ Semantically related to Computer Networks
-✓ Visual characteristics matched handwritten notes
-✓ Diagram-related visual features matched
+✓ OCR matched relevant terms from the query
+✓ Semantic similarity was high
+✓ Visual characteristics matched the requested clue
+✓ Available metadata matched the query
 Important rule
 
-The explanation must be based on actual retrieval signals.
+The explanation must be grounded in **actual retrieval evidence** — the OCR/text match, semantic similarity, visual similarity, available metadata, or other signals actually used.
 
-The system must not invent an explanation simply because it sounds convincing.
+The system must never fabricate visual detections, metadata, personal history, retrieval signals, similarity reasons, or any evidence not actually available. It must not invent an explanation simply because it sounds convincing.
 
 10. Summarization Is an MVP Agent Action
 Decision
 
 The agent should be able to summarize retrieved content.
+
+Summarization belongs to the orchestration / action layer, not the retrieval engine.
 
 Example:
 
@@ -208,6 +226,8 @@ Finding a memory should lead to a useful action rather than ending at image retr
 Decision
 
 The agent should be able to create a structured roadmap or plan from retrieved content.
+
+Roadmap/plan generation belongs to the orchestration / action layer, not the retrieval engine.
 
 Example:
 
@@ -235,9 +255,13 @@ Propose schedule
 Ask user for confirmation
        ↓
 Create calendar events
+Calendar actions belong to the orchestration / action layer, not the retrieval engine. The orchestrator may identify a relevant event or deadline, propose a calendar event, or propose a reminder.
+
 Important rule
 
-The agent should not create calendar events without user confirmation.
+Explicit user confirmation is required before creating a calendar event or reminder where appropriate. The agent should not create calendar events without user confirmation.
+
+ChatLens does not autonomously manage the user's calendar.
 
 Calendar integration should not compromise the core retrieval MVP if implementation time becomes limited.
 
@@ -247,6 +271,8 @@ Decision
 A locally collected/imported dataset can be used for the hackathon prototype.
 
 The dataset may contain images collected from different sources or contributors.
+
+Local photo / folder access is an input **source** mechanism for accessing and searching the user's visual memories. It is not the core product experience, and ChatLens should not be described as an image-upload workflow/tool.
 
 Reason
 
@@ -273,13 +299,21 @@ Visual embeddings
 Available metadata
 Current conversation context
 
-But we should not invent:
+But we should never fabricate:
 
-Viewing history
+Timestamps
+Deadlines
+Metadata
+Personal history
+Source information
+Viewing behavior
 Usage history
-Personal timestamps
+Events
+Retrieval evidence
 Previous interactions
-Exam-related history
+
+All explanations and actions must be grounded in information that actually exists in available content or user input.
+
 Reason
 
 The dataset may not contain genuine personal-history information.
@@ -366,20 +400,25 @@ The system understands the user's memory, not just the image's filename.
 19. Agent Scope
 Decision
 
-The intelligent agent should remain focused on ChatLens's core workflow.
+ChatLens uses a **single** intelligent agent (orchestrator) focused on ChatLens's core workflow. We are not building a complex multi-agent system.
 
-Core agent capabilities:
+Core agent (orchestration / action layer) capabilities:
 
 Understand search intent
 Refine searches
 Maintain conversational context
-Trigger retrieval
+Trigger retrieval and re-ranking
 Explain results
 Summarize retrieved content
 Generate roadmaps
 Propose calendar actions
+Propose reminders
+
+Summarization, roadmap/plan generation, calendar actions, and reminders belong to the orchestration / action layer, not the retrieval engine.
 
 We will not turn ChatLens into a general-purpose autonomous AI agent during the hackathon.
+
+We are deliberately **not** implementing: complex multi-agent systems, autonomous calendar management, face recognition, model training/fine-tuning, or unrelated AI features. The architecture stays simple, modular, testable, and hackathon-suitable.
 
 20. No Unnecessary Model Training
 Decision
@@ -444,6 +483,51 @@ Does this help the user find, understand, or act on something they remember?
 If yes, it may fit ChatLens.
 
 If no, it is probably outside the current scope.
+
+24. External Sources / Telegram
+Decision
+
+External sources can provide additional visual memories.
+
+Telegram is a **planned** source/input via a Telegram plugin/connector (planned, not yet implemented).
+
+The Telegram integration should supply available images and associated metadata to the ChatLens ingestion/retrieval system, following the same overall ingestion and retrieval principles rather than a separate retrieval architecture.
+
+The system should handle data arriving from such sources incrementally, as new content becomes available.
+
+25. Reminders
+Decision
+
+Reminders are an orchestrated capability.
+
+If the system identifies a genuine event, task, or deadline from available content or user input, the orchestrator may propose or schedule a reminder.
+
+A reminder must be based on information that actually exists in available content or user input. The system must not invent deadlines, dates, or times.
+
+Where confirmation is required, explicit user confirmation must be obtained before creating the reminder.
+
+26. Mock/Dummy Frontend Retrieval Is Temporary
+Decision
+
+Any existing mock/dummy retrieval implementation in the frontend is temporary UI/demo behavior only.
+
+It is **not** the actual retrieval architecture and must not be treated as the source of truth.
+
+The final system uses the real ML retrieval engine through the backend/orchestration architecture. The frontend mock must not be documented as a real retrieval pipeline.
+
+27. Implementation Direction
+Decision
+
+The current direction distinguishes CURRENT, PLANNED, and FUTURE work (planned features are not claimed as implemented):
+
+1. Stabilize frontend UX for local visual-memory access.
+2. Connect the backend to the real ML retrieval engine.
+3. Test frontend → backend → real retrieval → results.
+4. Add/complete conversational orchestration and context-aware refinement.
+5. Add evidence-based "Why this result?" explanations.
+6. Add supported orchestrated actions: summarization, roadmap/plan generation, calendar actions, reminders.
+7. Add Telegram as an external source/plugin when implemented.
+8. Perform complete end-to-end testing.
 
 Final Product Definition
 
