@@ -33,4 +33,5 @@ data/*
 !data/.gitkeep
 
 # Logs
-*.log
+*.logchroma_db/
+ml/vectorstore/chroma_db/

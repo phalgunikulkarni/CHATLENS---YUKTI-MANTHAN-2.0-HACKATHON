@@ -1,0 +1,39 @@
+# ChatLens — ML/Retrieval slice dependencies
+# Approved stack per docs/decisions.md. Reconstructed after a fresh clone
+# (the previous requirements files were not committed).
+#
+# Scope: CLIP visual + text embeddings, PaddleOCR text extraction,
+#        Sentence Transformers text embeddings, ChromaDB vector store,
+#        OpenCV + Pillow image processing. Python 3.11, Apple Silicon (arm64).
+
+# --- Visual embeddings: OpenAI CLIP via Hugging Face Transformers + PyTorch ---
+# openai/clip-vit-base-patch32 is loaded through transformers (arm64-friendly).
+torch>=2.2
+transformers>=4.40
+
+# --- OCR: PaddleOCR (CPU) ---
+paddlepaddle>=3.0
+paddleocr>=3.0
+
+# --- Text/semantic embeddings ---
+sentence-transformers>=2.7
+
+# --- Vector store ---
+chromadb>=0.5
+
+# --- Image processing ---
+opencv-python>=4.9
+pillow>=10.0
+
+# --- Transitive pin ---
+# paddlex (pulled in by paddleocr) hard-pins PyYAML==6.0.2, while kubernetes
+# (pulled in by chromadb) prefers pyyaml>=6.0.3. Pin to 6.0.2 to satisfy the
+# hard requirement; the kubernetes constraint is a soft warning only and is not
+# exercised by ChromaDB's local persistent mode.
+PyYAML==6.0.2
+
+# --- Automatic synchronization (filesystem watcher) ---
+# Cross-platform filesystem events (FSEvents on macOS,
+# ReadDirectoryChangesW on Windows). Used only by the watcher/trigger
+# layer; the watcher degrades to a lightweight polling fallback if absent.
+watchdog>=4.0
