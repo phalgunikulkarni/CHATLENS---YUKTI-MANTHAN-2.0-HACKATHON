@@ -81,29 +81,29 @@ It should feel like an intelligent assistant helping users reconstruct a memory.
 
 ## 6. Example User Journey
 
-**User:** “Find my CN notes about OSI.”
+**User:** “Find the screenshot with the error message.”
 
 ChatLens retrieves relevant results.
 
-**User:** “No, I remember they were handwritten and had a big diagram.”
+**User:** “No, I remember it was the one with the red button.”
 
-ChatLens preserves the original context, adds the new clues, and re-runs or re-ranks retrieval.
+ChatLens preserves the original context, adds the new clue, and re-runs or re-ranks retrieval rather than starting an unrelated search.
 
 **User:** “Why this result?”
 
 ChatLens explains the signals behind the result.
 
-**User:** “Summarize these notes.”
+**User:** “Summarize this.”
 
 The agent summarizes the retrieved content.
 
-**User:** “Create a 3-day revision roadmap.”
+**User:** “Create a short plan from this.”
 
 The agent generates a structured plan.
 
 **User:** “Schedule this.”
 
-The system proposes calendar events and asks for confirmation before creating them.
+The orchestrator proposes a calendar event or reminder and asks for confirmation before creating it.
 
 ## 7. Core System Flow
 
@@ -128,31 +128,50 @@ The system proposes calendar events and asks for confirmation before creating th
                            |
                            v
                 +---------------------+
-                | INTELLIGENT AGENT   |
+                | CONVERSATIONAL LLM  |
+                |  / ORCHESTRATOR     |
+                | (single agent)      |
                 |                     |
                 | Understand intent   |
                 | Maintain context    |
                 | Extract clues       |
-                | Update query        |
-                | Trigger actions     |
+                | Formulate/update    |
+                |   query             |
+                | Decide when to      |
+                |   trigger retrieval |
+                | Interpret results   |
+                | Explain / refine    |
+                | Invoke actions      |
                 +----------+----------+
                            |
                            v
-                    HYBRID RETRIEVAL
+                +---------------------+
+                | RETRIEVAL ENGINE    |
+                | (separate capability)|
+                | OCR/text + semantic |
+                | + CLIP visual +     |
+                | metadata + clues    |
+                | + ranking/re-ranking|
+                +----------+----------+
                            |
                            v
                     RANKED RESULTS
+                           |
+                           v
+                      ORCHESTRATOR
                            |
                  +---------+---------+
                  |                   |
                  v                   v
           WHY THIS RESULT?       USER ACTION
                                      |
-                         +-----------+-----------+
-                         |           |           |
-                         v           v           v
-                      Summary     Roadmap     Calendar
+                    +------------+------------+------------+
+                    |            |            |            |
+                    v            v            v            v
+                 Summary     Roadmap     Calendar     Reminder
 ```
+
+The layered ordering is: User → Conversational LLM / Orchestrator → Retrieval Engine → (OCR / semantic / visual / metadata signals) → Ranked Results → Orchestrator → Explain / Refine / Act. The agent sits around retrieval; it is not itself a search modality.
 
 ## 8. Image Understanding
 
@@ -167,29 +186,34 @@ Represent visual and semantic characteristics. This is particularly useful for m
 ### Metadata
 Where available, retain source, image identifier, timestamp, file information, and other relevant metadata.
 
-**Do not invent timestamps or personal history when unavailable.**
+Image understanding and the signals it produces are part of the **retrieval engine**, a separate capability used by the orchestrator/backend. The conversational LLM does **not** perform OCR, CLIP embedding, or vector search itself; it decides how and when those signals are used.
+
+**Never fabricate timestamps, deadlines, metadata, personal history, source information, viewing behavior, events, retrieval evidence, or previous interactions when unavailable.** All signals and explanations must be grounded in information that actually exists in available content or user input.
 
 ## 9. Hybrid Retrieval
 
-ChatLens combines multiple retrieval signals:
+The retrieval engine is a **separate capability** used by the orchestrator/backend. It finds and ranks relevant visual memories by combining, where applicable, multiple retrieval signals:
 
 - OCR/text matching
-- Semantic similarity
+- Semantic/text embeddings
 - CLIP-based visual similarity
 - Available metadata
-- User-provided memory clues
+- User-provided memory/query clues
+- Ranking and re-ranking
+
+The orchestrator decides how and when to use retrieval and how to interpret its results. The LLM does not perform OCR, CLIP embedding, or vector search itself.
 
 Example query:
 
-> “Find my handwritten CN notes about the OSI model.”
+> “Find the screenshot of the error message with a red button.”
 
 Possible signals:
 
 ```text
-OCR          -> “OSI”, “Computer Networks”
-Semantic     -> content related to CN / OSI
-Visual       -> handwritten notes / diagram characteristics
-Memory clues -> handwritten + notes + diagram
+OCR          -> matched error text from the query
+Semantic     -> content related to the described error
+Visual       -> screenshot / red button visual characteristics
+Memory clues -> error message + red button
 Metadata     -> available source/date information
 ```
 
@@ -203,39 +227,43 @@ These become additional retrieval signals.
 
 Example:
 
-> “Find my database notes.”
+> “Find the screenshot with the error message.”
 
 Then:
 
-> “I remember they were handwritten.”
+> “The one with the red button.”
 
 Then:
 
-> “There was a large normalization diagram.”
+> “It was on a dark background.”
 
-The agent should preserve the previous intent and progressively enrich the search.
+Each follow-up adds or modifies clues and refines the existing search, preserving relevant prior context, rather than starting an unrelated search. The agent should preserve the previous intent and progressively enrich the search.
 
 ## 11. Conversational Intelligent Agent
 
 The conversational LLM is a **core part of ChatLens**. It is not a separate chatbot beside search.
 
-It connects:
+ChatLens uses **one** conversational intelligent agent (orchestrator). We are **not** implementing a complex multi-agent architecture.
 
-**User conversation ↔ Retrieval ↔ Retrieved memories ↔ Actions**
+The LLM is the **orchestration and interaction layer around the retrieval engine**. It connects:
+
+**User conversation ↔ Retrieval engine ↔ Retrieved memories ↔ Actions**
 
 The agent should:
 
 1. Understand initial intent.
-2. Convert the request into a searchable query.
+2. Formulate the request into a searchable query.
 3. Maintain conversation context.
-4. Extract additional memory clues.
+4. Extract and update memory clues.
 5. Update or rewrite the retrieval query.
-6. Trigger retrieval/re-ranking again.
+6. Decide when retrieval/re-ranking is triggered.
 7. Interpret retrieved results.
-8. Explain results.
-9. Perform supported actions.
+8. Generate evidence-based explanations.
+9. Invoke supported actions.
 
-A follow-up such as “No, I remember it was handwritten” should refine the previous search rather than become an unrelated query.
+The LLM is **not** another retrieval modality. It does **not** replace OCR, CLIP, embeddings, vector search, or metadata retrieval — it decides how and when those signals are used and how to interpret them.
+
+A follow-up such as “No, I remember it was the one with the red button” should refine the previous search rather than become an unrelated query.
 
 ## 12. Why This Result?
 
@@ -245,24 +273,31 @@ Instead of only showing a similarity score, ChatLens should provide understandab
 
 > **Why this result?**
 >
-> ✓ OCR matched “OSI Model”  
-> ✓ Semantically related to Computer Networks  
-> ✓ Visual match for handwritten notes  
-> ✓ Diagram-related visual features matched
+> ✓ OCR matched relevant terms from the query  
+> ✓ Semantic similarity was high  
+> ✓ Visual characteristics matched the requested clue  
+> ✓ Available metadata matched the query
 
-The explanation should reflect the actual signals used by retrieval.
+The explanation must be grounded in **actual retrieval evidence** — the OCR/text match, semantic similarity, visual similarity, available metadata, or other signals actually used by retrieval. The system must never fabricate visual detections, metadata, personal history, retrieval signals, similarity reasons, or any evidence not actually available.
 
 ## 13. Actions on Retrieved Memories
 
+Summarization, roadmap/plan generation, calendar actions, and reminders are **orchestration / action-layer** capabilities, not retrieval-engine capabilities.
+
 ### Summarization
-“Summarize these notes.”
+“Summarize this.”
 
 The agent uses retrieved content to generate a useful summary.
 
 ### Roadmap / Plan Generation
-“Create a revision roadmap from these notes.”
+“Create a plan from this.”
 
 The agent generates an ordered plan based on retrieved material.
+
+### Reminders
+The orchestrator may propose a reminder when it identifies a genuine event, task, or deadline from available content or user input.
+
+A reminder must be based on information that actually exists in available content or user input. The system must not invent deadlines, dates, or times. Where appropriate, explicit user confirmation is required before creating a reminder.
 
 ### Calendar
 Where supported:
@@ -272,14 +307,14 @@ Retrieve memories
        ↓
 Generate plan
        ↓
-Propose schedule
+Propose schedule / reminder
        ↓
 Ask for confirmation
        ↓
-Create calendar events
+Create calendar event or reminder
 ```
 
-The agent should **not create calendar events without user confirmation**.
+The orchestrator may identify a relevant event or deadline and propose a calendar event or reminder, but it should **not create calendar events or reminders without user confirmation**. ChatLens does not autonomously manage the user's calendar.
 
 ## 14. What ChatLens Is NOT
 
@@ -291,6 +326,8 @@ ChatLens is not intended to be:
 - A basic image-upload/search application
 - A standalone chatbot
 - A generic autonomous agent with unrelated capabilities
+
+We are also deliberately **not** implementing complex multi-agent systems, autonomous calendar management, face recognition, model training/fine-tuning, or unrelated AI features.
 
 Its differentiator is:
 
@@ -319,11 +356,13 @@ The MVP is centered on:
 
 ### Important extension
 - Calendar integration with user confirmation
+- Reminders as a planned orchestrated action (with user confirmation where appropriate)
 
 ### Future / optional
 - Native Android application
 - Native iOS application
 - Additional source integrations
+- Telegram as a planned external source/input via a plugin/connector (planned, not yet implemented)
 - Long-term interaction history
 - Memory timeline
 - Fully autonomous calendar management
@@ -336,6 +375,10 @@ See `docs/mvp.md` for detailed MVP success criteria.
 
 The prototype may use supported personal source integrations, exported media, locally imported image archives, and curated datasets for development/testing.
 
+Local photo/folder access is an input/**source** mechanism for accessing and searching the user's visual memories. It is not the core product experience, and ChatLens should not be described as an image-upload workflow/tool.
+
+External sources can provide additional visual memories. **Telegram is a planned source/input** via a Telegram plugin/connector (planned, not yet implemented). It would supply available images and associated metadata to the same ingestion/retrieval architecture, following the same overall ingestion and retrieval principles, and content arriving from such sources is handled incrementally as it becomes available.
+
 A local dataset is acceptable for prototyping and evaluation.
 
 However, the system should **not pretend that randomly collected images have a user's real personal history**.
@@ -346,11 +389,11 @@ Features requiring genuine personal history, such as “Find the notes I viewed 
 
 The demo should show a story:
 
-1. **Remember** — “Find my CN notes about OSI.”
-2. **Refine** — “No, they were handwritten and had a big diagram.”
+1. **Remember** — “Find the screenshot with the error message.”
+2. **Refine** — “No, it was the one with the red button.”
 3. **Retrieve** — Relevant results appear.
 4. **Explain** — “Why this result?”
-5. **Act** — “Summarize these and create a 3-day revision roadmap.”
+5. **Act** — “Summarize this and create a short plan.”
 6. **Optional** — “Schedule it.”
 
 This demonstrates:
@@ -366,7 +409,7 @@ This demonstrates:
 5. Do not introduce major architecture changes without team discussion.
 6. Do not build features merely because an AI model can technically perform them.
 7. Every AI feature should contribute to the visual-memory workflow.
-8. Never fabricate user history, timestamps, or personal context.
+8. Never fabricate timestamps, deadlines, metadata, personal history, source information, viewing behavior, events, retrieval evidence, or previous interactions; ground everything in actually-available information.
 9. Test retrieval using realistic queries.
 10. Keep the project demoable at every stage.
 
@@ -380,9 +423,9 @@ This demonstrates:
 
 **Primary differentiator:** Search personal visual memories using natural-language descriptions and conversational memory clues rather than filenames or exact keywords.
 
-**Core intelligence:** OCR + CLIP visual understanding + semantic representations + hybrid retrieval + conversational intelligent agent
+**Core intelligence:** A separate retrieval engine (OCR + CLIP visual understanding + semantic representations + metadata + hybrid retrieval/ranking) coordinated by a **single conversational intelligent agent (orchestrator)** that surrounds it. The orchestrator is the interaction/orchestration layer; it is not another retrieval modality and does not replace OCR, CLIP, embeddings, vector search, or metadata retrieval. ChatLens is **not** a complex multi-agent system.
 
-**Core agent capabilities:** Search refinement + explanation + summarization + roadmap generation + supported external actions
+**Core agent (orchestration / action-layer) capabilities:** Search refinement + evidence-based explanation + summarization + roadmap/plan generation + confirmation-based calendar actions + confirmation-based reminders. Summarization, roadmap/plan generation, calendar actions, and reminders belong to the action layer, not the retrieval engine.
 
 ## 20. Team Rule
 

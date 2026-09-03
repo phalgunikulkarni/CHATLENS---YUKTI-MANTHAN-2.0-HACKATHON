@@ -4,9 +4,11 @@
 
 ChatLens follows a modular pipeline that connects image ingestion, image understanding, hybrid retrieval, conversational intelligence, and user actions.
 
+There is a **single conversational LLM / orchestrator** — not a multi-agent system. The orchestrator sits between user interaction and the retrieval engine: it formulates queries, sends them to a separate retrieval engine, receives ranked results back, and then explains, refines, or acts on them. The orchestrator is not itself an OCR, CLIP, or vector-search component.
+
 The core flow is:
 
-> **Image Sources → Ingestion → Processing → Search Index → Intelligent Agent → Hybrid Retrieval → Ranked Results → Actions**
+> **User → Frontend → Backend → Conversational LLM/Orchestrator → Retrieval Engine → Ranked Results → Orchestrator → Actions**
 
 The architecture should allow individual components to be improved or replaced without rewriting the entire application.
 
@@ -35,37 +37,24 @@ The architecture should allow individual components to be improved or replaced w
                     └──────────┬──────────┘
                                │
                                ▼
-                  ┌──────────────────────────┐
-                  │   Conversational Agent   │
-                  │                          │
-                  │ Intent + Context         │
-                  │ Query Refinement         │
-                  │ Action Selection         │
-                  └────────────┬─────────────┘
-                               │
-                    ┌──────────┴──────────┐
-                    │                     │
-                 Search                 Action
-                    │                     │
-                    ▼                     ▼
-          ┌──────────────────┐    ┌─────────────────┐
-          │ Retrieval Engine │    │  Action Layer   │
-          └────────┬─────────┘    │                 │
-                   │              │ Summary         │
-                   │              │ Roadmap         │
-                   │              │ Calendar        │
-                   │              └─────────────────┘
-                   ▼
-          ┌──────────────────────┐
-          │    Hybrid Search     │
-          └──────────┬───────────┘
+           ┌────────────────────────────────────────┐
+           │   Conversational LLM / Orchestrator      │
+           │   (ONE agent — NOT multi-agent)          │
+           │                                          │
+           │ Intent + Context                         │
+           │ Query Refinement                         │
+           │ Action Selection                         │
+           └───────┬──────────────────────────▲───────┘
+                   │ Query                     │ Ranked Results
+                   ▼                           │
+          ┌──────────────────────────────────────────┐
+          │           Retrieval Engine               │
+          │  (separate capability — NOT the LLM)     │
+          │                                          │
+          │  OCR/Text  Semantic/Text  CLIP Visual    │
+          │            Embeddings     Metadata       │
+          └──────────┬───────────────────────────────┘
                      │
-          ┌──────────┼───────────┐
-          ▼          ▼           ▼
-       OCR/Text   Semantic     CLIP
-        Search     Search     Visual Search
-          │          │           │
-          └──────────┼───────────┘
                      ▼
               Candidate Results
                      │
@@ -73,10 +62,27 @@ The architecture should allow individual components to be improved or replaced w
                   Re-ranking
                      │
                      ▼
-               Ranked Results
-                     │
-                     ▼
-              Why This Result?
+               Ranked Results ──────────────────────┐
+                                                     │
+                              (returned to Orchestrator, above)
+                                                     │
+                                                     ▼
+                                       ┌─────────────────────┐
+                                       │     Action Layer    │
+                                       │                     │
+                                       │ Explain             │
+                                       │ Refine              │
+                                       │ Summary             │
+                                       │ Roadmap / Plan      │
+                                       │ Reminder            │
+                                       │ Calendar Action     │
+                                       └─────────────────────┘
+```
+
+Ranked results flow back to the orchestrator, which then decides whether to explain
+("Why This Result?"), refine the search, or invoke an action. The LLM never acts as an
+OCR/CLIP/vector-search node — it formulates queries and interprets results only.
+
 3. Image Ingestion Layer
 
 The ingestion layer is responsible for bringing images into ChatLens.
@@ -88,6 +94,11 @@ The prototype may support:
 Local/imported images
 Exported media
 Other supported sources as integrations become available
+
+External sources — including local folders and a planned Telegram connector/plugin
+(Telegram planned, not yet implemented) — feed the SAME overall ingestion/retrieval
+architecture. Local/folder access and Telegram follow the same ingestion principles, and
+the system should handle incrementally-arriving content as new content becomes available.
 
 The ingestion layer should be independent from the retrieval system.
 
@@ -198,12 +209,18 @@ Stores and retrieves image/vector representations for similarity search.
 
 ChatLens uses hybrid retrieval.
 
-The system combines different retrieval mechanisms rather than relying on only OCR or only vector similarity.
+The Retrieval Engine is a **separate capability** from the orchestrator. It combines
+OCR/text, semantic/text embeddings, CLIP visual embeddings, metadata, and memory/query
+clues to produce ranked results via ranking/re-ranking. It relies on more than only OCR
+or only vector similarity.
+
+The "Conversational Agent" shown above the query is the **single orchestrator**: it
+formulates the query and interprets the results. It is not itself a retrieval modality.
 
                     USER QUERY
                          │
                          ▼
-                Conversational Agent
+             Conversational Agent (Orchestrator)
                          │
                          ▼
                   Query Representation
@@ -211,7 +228,7 @@ The system combines different retrieval mechanisms rather than relying on only O
           ┌──────────────┼──────────────┐
           ▼              ▼              ▼
       OCR/Text        Semantic        CLIP
-       Search          Search       Visual Search
+       Search        Embeddings     Visual Search
           │              │              │
           └──────────────┼──────────────┘
                          ▼
@@ -224,22 +241,22 @@ The system combines different retrieval mechanisms rather than relying on only O
                    Ranked Results
 7. Query Processing
 
-The intelligent agent converts the user's natural-language request into useful retrieval information.
+The intelligent agent (single orchestrator) converts the user's natural-language request into useful retrieval information.
 
 Example:
 
-"Find my handwritten CN notes about OSI."
+"Find the screenshot with the error message."
 
 Possible query signals:
 
 Topic:
-Computer Networks / OSI
+Error message
 
 Content:
-Notes
+Screenshot
 
 Visual clue:
-Handwritten
+On-screen text / dialog
 
 The retrieval layer uses these signals to search the visual memory index.
 
@@ -247,12 +264,12 @@ The retrieval layer uses these signals to search the visual memory index.
 
 Conversational retrieval is one of the core architectural features.
 
-The agent maintains relevant context across turns.
+The single orchestrator maintains relevant context across turns.
 
 Example:
 
 User:
-Find my CN notes about OSI.
+Find the screenshot with the error message.
              │
              ▼
         First Retrieval
@@ -261,7 +278,7 @@ Find my CN notes about OSI.
           Results
 
 User:
-No, they were handwritten.
+No, the one with the red button.
              │
              ▼
       Update Context
@@ -273,7 +290,7 @@ No, they were handwritten.
       Improved Results
 
 User:
-There was a large diagram.
+It also had a stack trace.
              │
              ▼
       Update Context Again
@@ -304,13 +321,13 @@ The ranking system should retain enough information to explain the result.
 
 10. Intelligent Agent
 
-The conversational LLM acts as the orchestration and reasoning layer.
+The conversational LLM acts as the orchestration and reasoning layer. It is a **single orchestrator — not a multi-agent system**, and it does not perform OCR, CLIP, or vector search itself.
 
 It connects:
 
 User
  ↓
-Agent
+Orchestrator
  ├── Search
  ├── Refine Search
  ├── Explain
@@ -325,18 +342,22 @@ Refine an existing search
 Ask why a result was selected
 Summarize retrieved content
 Generate a roadmap
+Create a reminder
 Schedule a generated plan
+
+Its possible actions include Summarize, Roadmap/Plan, Reminder, and Calendar Action.
+These are action-layer capabilities, not retrieval-engine functions.
 
 The agent should not become a generic unrelated chatbot.
 
 11. Agent → Retrieval Interaction
 
-The relationship between the agent and retrieval system is:
+The relationship between the single orchestrator and the separate retrieval engine is:
 
              User Message
                   │
                   ▼
-          Intelligent Agent
+     Intelligent Agent (Orchestrator)
                   │
           Understand Intent
                   │
@@ -393,16 +414,19 @@ Example:
 
 Why this result?
 
-✓ OCR matched "OSI Model"
-✓ Semantically related to Computer Networks
-✓ Visual characteristics matched handwritten notes
-✓ Diagram-related visual signal matched
+✓ OCR matched "error"
+✓ Semantically related to the query text
+✓ Visual characteristics matched an on-screen dialog
+✓ Metadata matched the requested source
 
-The explanation must be based on actual retrieval evidence.
+The explanation must be based on ACTUAL retrieval evidence/signals exposed by the
+retrieval engine. It must never fabricate visual detections, metadata, personal history,
+retrieval signals, or similarity reasons that retrieval did not actually produce.
 
 13. Action Layer
 
-Actions operate on retrieved memories.
+Actions operate on retrieved memories. They belong to the orchestration/action layer,
+not the retrieval engine.
 
 13.1 Summarization
 Retrieved Images
@@ -430,7 +454,25 @@ Example:
 
 "Create a 3-day revision plan from these notes."
 
-13.3 Calendar Integration
+13.3 Reminder
+
+A reminder must be grounded in a genuine event, task, or deadline found in available
+content or provided by user input.
+
+Retrieved Content / User Input
+       ↓
+Identify Genuine Event / Task / Deadline
+       ↓
+Propose Reminder
+       ↓
+User Confirmation
+       ↓
+Reminder Created
+
+The system must never invent dates or times, and it requires explicit user confirmation
+where appropriate before creating a reminder.
+
+13.4 Calendar Integration
 
 Calendar scheduling follows a confirmation-based workflow.
 
@@ -446,12 +488,16 @@ Calendar API
        ↓
 Calendar Events
 
-The system should not create external calendar events without confirmation.
+The orchestrator proposes an event or reminder and requires explicit confirmation. The
+system should not create external calendar events without confirmation and does not
+autonomously manage the calendar.
+
+These actions belong to the orchestration/action layer, not the retrieval engine.
 
 14. End-to-End Example
 USER
  │
- │ "Find my handwritten CN notes about OSI."
+ │ "Find the screenshot with the error message."
  ▼
 FRONTEND
  │
@@ -459,14 +505,15 @@ FRONTEND
 BACKEND
  │
  ▼
-INTELLIGENT AGENT
+INTELLIGENT AGENT (ORCHESTRATOR)
  │
  │ Understand intent
  ▼
-HYBRID RETRIEVAL
- ├── OCR
- ├── Semantic
- └── CLIP
+RETRIEVAL ENGINE
+ ├── OCR/Text
+ ├── Semantic/Text Embeddings
+ ├── CLIP Visual
+ └── Metadata
  │
  ▼
 RANKING
@@ -478,10 +525,10 @@ RESULTS
  │
  │
  └── User:
-     "No, there was a large diagram."
+     "No, the one with the red button."
               │
               ▼
-       AGENT UPDATES CONTEXT
+       ORCHESTRATOR UPDATES CONTEXT
               │
               ▼
        RETRIEVAL AGAIN
@@ -505,6 +552,19 @@ RESULTS
               │
               ▼
        User:
+       "Remind me about step 1 tomorrow."
+              │
+              ▼
+       PROPOSED REMINDER
+              │
+              ▼
+       CONFIRMATION
+              │
+              ▼
+         REMINDER CREATED
+              │
+              ▼
+       User:
        "Schedule it."
               │
               ▼
@@ -512,6 +572,8 @@ RESULTS
               │
               ▼
        CALENDAR
+
+The orchestrator only proposes reminders/events; scheduling is never autonomous.
 15. Component Responsibilities
 Component	Responsibility
 React Frontend	User interface, search, conversation, results, actions
@@ -521,11 +583,13 @@ OCR	Extract text
 CLIP	Generate visual embeddings
 Database	Store structured image/application information
 Vector Store	Store and retrieve embeddings
-Retrieval Engine	Execute hybrid search
-Ranking Layer	Combine retrieval signals
-Intelligent Agent	Understand intent, maintain context, refine queries, select actions
-Action Layer	Summary, roadmap and calendar workflows
+Retrieval Engine	Separate retrieval capability: execute hybrid search
+Ranking Layer	Separate retrieval capability: combine retrieval signals
+Intelligent Agent	Single orchestrator: understand intent, maintain context, refine queries, interpret results, select/invoke actions
+Action Layer	Summary, roadmap, reminder and calendar workflows
 Explanation Layer	Produce grounded retrieval explanations
+
+Note: any mock/dummy frontend retrieval, if present, is temporary demo UI only and is NOT the real retrieval engine.
 16. Suggested Repository Structure
 ChatLens/
 │
@@ -554,6 +618,8 @@ ChatLens/
     ├── architecture.md
     └── decisions.md
 
+Telegram and local-folder sources feed `ai/ingestion/`.
+
 The exact structure can evolve as implementation progresses.
 
 17. Technology Mapping
@@ -580,13 +646,16 @@ Frontend
    ↕
 Backend API
    ↕
-Agent / Orchestration
+Agent / Orchestration (single orchestrator)
    ↕
-Retrieval
+Retrieval (separate retrieval engine)
    ↕
 Processing
    ↕
 Storage
+
+The single orchestrator does not replace the separate retrieval engine, and the retrieval
+engine does not replace the orchestrator.
 
 Changes to shared interfaces should be communicated to the team before implementation.
 
@@ -606,13 +675,13 @@ Avoid building complex infrastructure before the core retrieval loop works.
 
 20. Core Architectural Principle
 
-The most important relationship in ChatLens is:
+The most important relationship in ChatLens is a **single orchestrator around a separate retrieval engine**:
 
              CONVERSATION
                    ↕
-           INTELLIGENT AGENT
+     INTELLIGENT AGENT (single orchestrator)
                    ↕
-              RETRIEVAL
+       RETRIEVAL ENGINE (separate capability)
                    ↕
           VISUAL MEMORY INDEX
 
