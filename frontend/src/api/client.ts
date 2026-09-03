@@ -1,7 +1,6 @@
 import type { ApiService } from "./ApiService";
 import type { ConnectorService } from "./ConnectorService";
 import { HttpAdapter } from "./adapters/httpAdapter";
-import { MockAdapter } from "./adapters/mockAdapter";
 import { NotConnectedAdapter } from "./adapters/notConnectedAdapter";
 import { HttpConnectorService } from "./adapters/httpConnectorService";
 import { NotConnectedConnectorService } from "./adapters/notConnectedConnectorService";
@@ -9,17 +8,16 @@ import { NotConnectedConnectorService } from "./adapters/notConnectedConnectorSe
 /**
  * Builds the API_Service and selects an adapter, in priority order:
  *   1. HTTP adapter    - when VITE_API_BASE_URL points at a live backend.
- *   2. Mock adapter    - ONLY when VITE_USE_MOCK === "true" (explicit dev opt-in).
- *   3. NotConnected    - the DEFAULT. Every call rejects so the UI shows an
- *                        honest "backend not connected" state and never shows
- *                        fabricated data as if it were real.
+ *   2. NotConnected    - the DEFAULT. Every call rejects so the UI shows an
+ *                        honest waiting state and never presents fabricated
+ *                        results, scores, or explanations as if they were real.
  *
- * No other module constructs adapters or issues HTTP directly.
+ * The real retrieval backend is connected later via the HTTP adapter. No other
+ * module constructs adapters or issues HTTP directly.
  */
 export function createApiService(): ApiService {
   const url = import.meta.env.VITE_API_BASE_URL?.trim();
   if (url) return new HttpAdapter(url);
-  if (import.meta.env.VITE_USE_MOCK === "true") return new MockAdapter();
   return new NotConnectedAdapter();
 }
 
@@ -39,9 +37,6 @@ export const connectorService: ConnectorService = createConnectorService();
 
 /** True when a live backend base URL is configured. */
 export const IS_BACKEND_CONNECTED = Boolean(import.meta.env.VITE_API_BASE_URL?.trim());
-
-/** True only when explicitly running against the isolated dev/demo mock adapter. */
-export const IS_DEMO_MODE = !IS_BACKEND_CONNECTED && import.meta.env.VITE_USE_MOCK === "true";
 
 export type { ApiService } from "./ApiService";
 export type { ConnectorService } from "./ConnectorService";

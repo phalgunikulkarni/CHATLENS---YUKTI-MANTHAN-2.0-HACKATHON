@@ -1,13 +1,12 @@
 import type { ViewName } from "../state/types";
+import type { ConversationSummary } from "../state/conversations.slice";
 import { BrandLogo } from "../components/BrandLogo";
 import { Icon, type IconName } from "../components/Icon";
-import { IS_BACKEND_CONNECTED, IS_DEMO_MODE } from "../api/client";
 import { UserMenu } from "../features/auth/UserMenu";
 
 const NAV: { view: ViewName; label: string; icon: IconName }[] = [
   { view: "search", label: "Search", icon: "search" },
   { view: "library", label: "Memories", icon: "library" },
-  { view: "history", label: "Search history", icon: "history" },
   { view: "connectors", label: "Connectors", icon: "layers" },
   { view: "upload", label: "Upload", icon: "upload" },
 ];
@@ -16,9 +15,21 @@ interface Props {
   view: ViewName;
   open: boolean;
   onNavigate: (v: ViewName) => void;
+  conversations: ConversationSummary[];
+  activeConversationId: string | null;
+  onNewChat: () => void;
+  onSelectConversation: (id: string) => void;
 }
 
-export function Sidebar({ view, open, onNavigate }: Props) {
+export function Sidebar({
+  view,
+  open,
+  onNavigate,
+  conversations,
+  activeConversationId,
+  onNewChat,
+  onSelectConversation,
+}: Props) {
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>
       <div className="brand">
@@ -40,16 +51,35 @@ export function Sidebar({ view, open, onNavigate }: Props) {
           </button>
         ))}
       </nav>
+
+      <div className="conv-section">
+        <button className="nav-item new-chat" onClick={onNewChat}>
+          <Icon name="sparkles" size={19} /> New Chat
+        </button>
+        <div className="conv-label">Conversations</div>
+        {conversations.length === 0 ? (
+          <div className="conv-empty">No conversations yet</div>
+        ) : (
+          <div className="conv-list">
+            {conversations.map((c) => {
+              const active = c.id === activeConversationId;
+              return (
+                <button
+                  key={c.id}
+                  className={`nav-item conv-item ${active ? "active" : ""}`}
+                  onClick={() => onSelectConversation(c.id)}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <Icon name="history" size={17} />
+                  <span className="conv-title">{c.title || "New chat"}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="sidebar-footer">
-        <div style={{ marginBottom: 12 }}>
-          {IS_DEMO_MODE ? (
-            <span className="mock-badge"><Icon name="sparkles" size={12} /> Demo mode</span>
-          ) : !IS_BACKEND_CONNECTED ? (
-            <span className="mock-badge"><Icon name="database" size={12} /> Backend not connected</span>
-          ) : (
-            <span className="mock-badge"><Icon name="check" size={12} /> Backend connected</span>
-          )}
-        </div>
         <UserMenu />
       </div>
     </aside>

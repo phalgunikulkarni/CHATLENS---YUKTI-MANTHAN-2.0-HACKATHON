@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { ExplanationSignal, ExplanationSignalType } from "../../api/types";
 import { hasItems, hasNumber } from "../../utils/guards";
-import { IS_DEMO_MODE } from "../../api/client";
 import { Icon, type IconName } from "../../components/Icon";
 
 const ICON_MAP: Record<string, IconName> = {
@@ -51,8 +50,6 @@ export function RetrievalSignals({
 
   return (
     <div>
-      {IS_DEMO_MODE && <span className="demo-tag">Demo explanation</span>}
-
       <div className="signal-chips">
         {signals.map((s, i) => {
           const open = openIndex === i;

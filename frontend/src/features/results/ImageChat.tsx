@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { apiService } from "../../api/client";
 import { isNotConnected } from "../../api/errors";
 import { isSendable } from "../../utils/validation";
-import { IS_DEMO_MODE } from "../../api/client";
 import { Icon } from "../../components/Icon";
 
 interface Turn {
@@ -59,7 +58,6 @@ export function ImageChat({ imageId }: { imageId: string }) {
     <div className="image-chat">
       <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <Icon name="brain" size={16} style={{ color: "var(--accent)" }} /> Ask about this image
-        {IS_DEMO_MODE && <span className="demo-tag">Demo answers</span>}
       </div>
 
       {turns.length > 0 && (

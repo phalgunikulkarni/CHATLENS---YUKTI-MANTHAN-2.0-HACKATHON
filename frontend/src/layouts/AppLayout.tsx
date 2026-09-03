@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useDispatch, useOnlineStatus, useUi } from "../hooks";
+import { useConversations, useDispatch, useOnlineStatus, useUi } from "../hooks";
+import { useChatLens } from "../hooks/useChatLens";
 import type { ViewName } from "../state/types";
 import { Sidebar } from "./Sidebar";
 import { Icon } from "../components/Icon";
@@ -8,13 +9,14 @@ import { ToastHost } from "../components/ToastHost";
 const TITLES: Record<ViewName, string> = {
   search: "Visual memory search",
   library: "Your memory library",
-  history: "Search history",
   upload: "Add memories",
   connectors: "Connect your memories",
 };
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const { view, offline, showImageReminder } = useUi();
+  const conversations = useConversations();
+  const c = useChatLens();
   const dispatch = useDispatch();
   const online = useOnlineStatus();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -31,7 +33,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
       {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} />}
-      <Sidebar view={view} open={menuOpen} onNavigate={navigate} />
+      <Sidebar
+        view={view}
+        open={menuOpen}
+        onNavigate={navigate}
+        conversations={conversations.summaries}
+        activeConversationId={conversations.activeId}
+        onNewChat={() => { c.newConversation(); setMenuOpen(false); }}
+        onSelectConversation={(id) => { c.selectConversation(id); setMenuOpen(false); }}
+      />
       <div className="main">
         {offline && <div className="offline-bar">You are offline. Some actions may not work.</div>}
         <div className="topbar">

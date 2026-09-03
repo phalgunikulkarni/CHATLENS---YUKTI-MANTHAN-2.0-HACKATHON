@@ -20,4 +20,5 @@ export const useResults = () => useRootState().results;
 export const useIngestion = () => useRootState().ingestion;
 export const useActions = () => useRootState().actions;
 export const useConnectors = () => useRootState().connectors;
+export const useConversations = () => useRootState().conversations;
 export const useUi = () => useRootState().ui;

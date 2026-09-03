@@ -40,8 +40,8 @@ export function ErrorState({ title, message, onRetry }: { title: string; message
  * honest integration state - it never presents fabricated data as real.
  */
 export function NotConnectedState({
-  title = "Search service not connected yet",
-  message = "Connect the ChatLens backend to retrieve your memories. Until then, results, explanations and summaries come from the live retrieval system.",
+  title = "Search is ready",
+  message = "Your search is ready. Results will appear here once your memories are connected.",
 }: {
   title?: string;
   message?: string;

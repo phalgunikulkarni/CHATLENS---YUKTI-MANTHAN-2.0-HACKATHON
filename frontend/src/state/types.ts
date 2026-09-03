@@ -8,6 +8,7 @@ import type {
   TurnResponse,
 } from "../api/types";
 import type { ConnectorsState } from "./connectors.slice";
+import type { ConversationsState } from "./conversations.slice";
 
 export interface TurnTranscriptEntry {
   id: string;
@@ -79,7 +80,7 @@ export interface Toast {
   tone: ToastTone;
 }
 
-export type ViewName = "search" | "library" | "history" | "upload" | "connectors";
+export type ViewName = "search" | "library" | "upload" | "connectors";
 
 export interface SearchHistoryEntry {
   id: string;
@@ -105,6 +106,7 @@ export interface UiState {
 export interface RootState {
   conversation: ConversationState;
   connectors: ConnectorsState;
+  conversations: ConversationsState;
   results: ResultsState;
   ingestion: IngestionState;
   actions: ActionsState;

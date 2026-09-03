@@ -6,7 +6,6 @@ import { AppLayout } from "./layouts/AppLayout";
 import { useUi } from "./hooks";
 import { SearchWorkspace } from "./pages/SearchWorkspace";
 import { LibraryPage } from "./pages/LibraryPage";
-import { HistoryPage } from "./pages/HistoryPage";
 import { UploadPage } from "./pages/UploadPage";
 import { ConnectorsPage } from "./pages/ConnectorsPage";
 
@@ -17,7 +16,6 @@ function Dashboard() {
     <AppLayout>
       {view === "search" && <SearchWorkspace />}
       {view === "library" && <LibraryPage />}
-      {view === "history" && <HistoryPage />}
       {view === "upload" && <UploadPage />}
       {view === "connectors" && <ConnectorsPage />}
     </AppLayout>

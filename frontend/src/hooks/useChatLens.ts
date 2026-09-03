@@ -1,7 +1,8 @@
 import { useCallback } from "react";
 import { apiService } from "../api/client";
 import { isNotConnected } from "../api/errors";
-import { useConversation, useDispatch, useResults } from "../hooks";
+import { useConversation, useConversations, useDispatch, useResults } from "../hooks";
+import { makeTitle } from "../state/conversations.slice";
 import { validateFile } from "../state/ingestion.slice";
 import type { UploadItem } from "../state/types";
 import { uid } from "../utils/format";
@@ -18,11 +19,40 @@ const NOT_CONNECTED_MSG =
 export function useChatLens() {
   const dispatch = useDispatch();
   const conversation = useConversation();
+  const conversations = useConversations();
   const results = useResults();
+
+  const newConversation = useCallback(() => {
+    dispatch({ type: "CONVERSATION_NEW", id: uid("conv"), createdAt: Date.now() });
+    dispatch({ type: "VIEW_CHANGED", view: "search" });
+  }, [dispatch]);
+
+  const selectConversation = useCallback(
+    (id: string) => {
+      dispatch({ type: "CONVERSATION_SELECTED", id });
+      dispatch({ type: "VIEW_CHANGED", view: "search" });
+    },
+    [dispatch]
+  );
 
   const runSearch = useCallback(
     async (query: string) => {
       dispatch({ type: "VIEW_CHANGED", view: "search" });
+
+      // Ensure there is an active conversation, then title it deterministically.
+      // When activeId is null we cannot read the new id back synchronously, so we
+      // pre-compute the id and reuse it for the title dispatch. The root reducer
+      // creates the summary (CONVERSATION_NEW) before it processes the title.
+      const newId = uid("conv");
+      const convId = conversations.activeId ?? newId;
+      if (!conversations.activeId) {
+        dispatch({ type: "CONVERSATION_NEW", id: newId, createdAt: Date.now() });
+      }
+      const activeSummary = conversations.summaries.find((s) => s.id === convId);
+      if (!activeSummary || !activeSummary.title) {
+        dispatch({ type: "CONVERSATION_TITLED", id: convId, title: makeTitle(query) });
+      }
+
       dispatch({ type: "USER_MESSAGE_ADDED", id: uid("u"), text: query });
       dispatch({ type: "TURN_STARTED" });
       dispatch({ type: "SEARCH_STARTED", query });
@@ -31,11 +61,6 @@ export function useChatLens() {
         dispatch({ type: "TURN_RECEIVED", id: uid("a"), turn });
         dispatch({ type: "RESULTS_REPLACED", items: turn.results ?? [], query });
         if (turn.sessionId) dispatch({ type: "SESSION_STARTED", sessionId: turn.sessionId });
-        // Record ONLY real, user-performed, backend-answered searches.
-        dispatch({
-          type: "SEARCH_RECORDED",
-          entry: { id: uid("h"), query, at: Date.now(), resultCount: turn.results?.length ?? 0 },
-        });
       } catch (err) {
         if (isNotConnected(err)) {
           dispatch({ type: "TURN_NOT_CONNECTED", id: uid("a"), message: NOT_CONNECTED_MSG });
@@ -46,7 +71,7 @@ export function useChatLens() {
         }
       }
     },
-    [dispatch, conversation.sessionId]
+    [dispatch, conversation.sessionId, conversations.activeId, conversations.summaries]
   );
 
   const runRefine = useCallback(
@@ -183,16 +208,6 @@ export function useChatLens() {
     dispatch({ type: "PROPOSAL_CLEARED" });
   }, [dispatch]);
 
-  const clearHistory = useCallback(() => {
-    dispatch({ type: "HISTORY_CLEARED" });
-    dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Search history cleared", tone: "info" } });
-  }, [dispatch]);
-
-  const removeHistoryItem = useCallback((id: string) => {
-    dispatch({ type: "HISTORY_ITEM_REMOVED", id });
-    dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Search removed", tone: "info" } });
-  }, [dispatch]);
-
   const queueFiles = useCallback((files: File[]) => {
     const items: UploadItem[] = files.map((f) => {
       const validation = validateFile(f.type, f.size);
@@ -215,8 +230,9 @@ export function useChatLens() {
 
   return {
     runSearch, runRefine, removeClue, toggleSelect, openDrawer, closeDrawer,
+    newConversation, selectConversation,
     summarize, makeRoadmap, summarizeImage, roadmapImage,
     proposeSchedule, confirmSchedule, cancelSchedule,
-    clearHistory, removeHistoryItem, queueFiles, removeUpload,
+    queueFiles, removeUpload,
   };
 }
