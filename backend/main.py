@@ -1,9 +1,23 @@
 import json
 import uuid
-from typing import List
-from fastapi import FastAPI, Depends, HTTPException
+from datetime import datetime
+from typing import List, Optional
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import schemas
+from schemas import (
+    MemoryResult,
+    ExplanationSignal,
+    TurnResponse,
+    TurnSearchRequest,
+    RefineRequestBody,
+    SummarizeRequestBody,
+    SummaryResponseBody,
+    RoadmapRequestBody,
+    RoadmapResponseBody,
+    ImageStatus,
+)
 from retrieval import hybrid_search
 import models
 from database import engine, SessionLocal
@@ -11,6 +25,15 @@ from database import engine, SessionLocal
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="ChatLens API", description="AI-powered personal visual memory search engine")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # Dependency
 def get_db():
@@ -20,137 +43,118 @@ def get_db():
     finally:
         db.close()
 
+
+def _to_memory_result(record) -> MemoryResult:
+    """
+    Map a backend Image DB row (or ImageRecord from hybrid_search) to a
+    MemoryResult in the frontend-canonical shape.
+
+    NOTE: The retrieval engine is not integrated yet, so we intentionally do
+    NOT fabricate retrieval signals. `matchScore` and `explanation` are left as
+    None. `thumbnailUrl` is a passthrough of the stored image_reference and may
+    not be a real URL — this is an accepted known limitation.
+    """
+    # metadata may be a parsed dict (ImageRecord) or None; coerce values to str.
+    raw_meta = getattr(record, "metadata", None)
+    if raw_meta:
+        metadata = {str(k): str(v) for k, v in raw_meta.items()}
+    else:
+        metadata = None
+
+    timestamp = getattr(record, "timestamp", None)
+    captured_at = timestamp.isoformat() if timestamp else None
+
+    return MemoryResult(
+        id=record.image_id,
+        thumbnailUrl=record.image_reference,  # passthrough; do NOT fabricate
+        fullUrl=None,
+        ocrSnippet=getattr(record, "ocr_text", None),
+        matchScore=None,  # retrieval engine not integrated; do NOT invent a score
+        sourceTag=getattr(record, "source", None),
+        capturedAt=captured_at,
+        metadata=metadata,
+        explanation=None,  # no real retrieval signals yet; do NOT fabricate
+    )
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
-@app.post("/images", response_model=schemas.ImageResponse)
-def upload_image(request: schemas.ImageUploadRequest, db: Session = Depends(get_db)):
-    # Stubbed file saving and AI processing. 
+
+@app.post("/api/search", response_model=TurnResponse)
+def search(request: TurnSearchRequest, db: Session = Depends(get_db)):
+    session_id = request.sessionId or f"session_{uuid.uuid4().hex[:8]}"
+    results = [_to_memory_result(r) for r in hybrid_search(db, request.query)]
+    return TurnResponse(
+        sessionId=session_id,
+        intent="search",
+        agentMessage=f"Found {len(results)} memories.",
+        clues=[],
+        results=results,
+    )
+
+
+@app.post("/api/refine", response_model=TurnResponse)
+def refine(request: RefineRequestBody, db: Session = Depends(get_db)):
+    results = [_to_memory_result(r) for r in hybrid_search(db, request.message)]
+    return TurnResponse(
+        sessionId=request.sessionId,
+        intent="refinement",
+        agentMessage=f"Refined search. {len(results)} memories.",
+        clues=request.activeClues,  # echo back active clues unchanged
+        results=results,
+    )
+
+
+@app.get("/api/results/{result_id}/explanation", response_model=List[ExplanationSignal])
+def get_explanation(result_id: str):
+    # Real retrieval signals are not available yet. Return an empty list; the
+    # frontend renders an "explanation not available" state for an empty array.
+    # Do NOT fabricate signals.
+    return []
+
+
+@app.post("/api/actions/summarize", response_model=SummaryResponseBody)
+def summarize_images(request: SummarizeRequestBody):
+    return SummaryResponseBody(
+        sessionId=request.sessionId,
+        summary=(
+            "Summarization requires the retrieval/LLM service, which is not "
+            f"connected yet. {len(request.imageIds)} memories were selected."
+        ),
+        usedImageIds=request.imageIds,
+    )
+
+
+@app.post("/api/actions/roadmap", response_model=RoadmapResponseBody)
+def generate_roadmap(request: RoadmapRequestBody):
+    # Real generation is not connected; return an empty steps list. The
+    # frontend renders only supplied steps. Do NOT fabricate roadmap content.
+    return RoadmapResponseBody(sessionId=request.sessionId, steps=[])
+
+
+@app.post("/api/images", response_model=ImageStatus)
+def upload_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    # Do NOT run OCR/CLIP and do NOT persist the binary. Create a minimal DB row
+    # so the status is queryable.
     image_id = f"img_{uuid.uuid4().hex[:8]}"
-    meta_json = json.dumps(request.metadata) if request.metadata else None
-    
     db_image = models.Image(
         image_id=image_id,
-        image_reference=request.image_reference,
-        source=request.source,
-        timestamp=request.timestamp,
-        ocr_text="Mock OCR text generated upon upload",
-        metadata_json=meta_json
+        image_reference=file.filename,
+        source="upload",
+        timestamp=datetime.utcnow(),
+        ocr_text=None,
+        metadata_json=None,
     )
     db.add(db_image)
     db.commit()
-    db.refresh(db_image)
-    
-    meta = json.loads(db_image.metadata_json) if db_image.metadata_json else None
-    return schemas.ImageResponse(
-        image_id=db_image.image_id,
-        image_reference=db_image.image_reference,
-        source=db_image.source,
-        timestamp=db_image.timestamp,
-        ocr_text=db_image.ocr_text,
-        metadata=meta,
-        processing_state="completed"
-    )
+    return ImageStatus(imageId=image_id, status="processing")
 
-@app.get("/images", response_model=List[schemas.ImageResponse])
-def list_images(db: Session = Depends(get_db)):
-    results = db.query(models.Image).all()
-    images = []
-    for r in results:
-        meta = json.loads(r.metadata_json) if r.metadata_json else None
-        images.append(schemas.ImageResponse(
-            image_id=r.image_id,
-            image_reference=r.image_reference,
-            source=r.source,
-            timestamp=r.timestamp,
-            ocr_text=r.ocr_text,
-            metadata=meta,
-            processing_state="completed"
-        ))
-    return images
 
-@app.get("/images/{image_id}", response_model=schemas.ImageResponse)
-def get_image(image_id: str, db: Session = Depends(get_db)):
+@app.get("/api/images/{image_id}/status", response_model=ImageStatus)
+def get_image_status(image_id: str, db: Session = Depends(get_db)):
     r = db.query(models.Image).filter(models.Image.image_id == image_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="Image not found")
-    meta = json.loads(r.metadata_json) if r.metadata_json else None
-    return schemas.ImageResponse(
-        image_id=r.image_id,
-        image_reference=r.image_reference,
-        source=r.source,
-        timestamp=r.timestamp,
-        ocr_text=r.ocr_text,
-        metadata=meta,
-        processing_state="completed"
-    )
-
-@app.post("/search", response_model=schemas.SearchResponse)
-def search(request: schemas.SearchRequest, db: Session = Depends(get_db)):
-    # Stubbed to call retrieval.py text search
-    results = hybrid_search(db, request.query)
-    
-    search_results = []
-    for r in results:
-        img_resp = schemas.ImageResponse(
-            image_id=r.image_id,
-            image_reference=r.image_reference,
-            source=r.source,
-            timestamp=r.timestamp,
-            ocr_text=r.ocr_text,
-            metadata=r.metadata,
-            processing_state="completed"
-        )
-        search_results.append(schemas.SearchResult(
-            image=img_resp,
-            score=0.95,
-            signals={"ocr_match": True, "semantic_similarity": 0.8}
-        ))
-    return schemas.SearchResponse(results=search_results)
-
-@app.post("/conversations/{conversation_id}/messages", response_model=schemas.SearchResponse)
-def add_message(conversation_id: str, request: schemas.MessageRequest, db: Session = Depends(get_db)):
-    # Stubbed conversational refinement
-    results = hybrid_search(db, request.message)
-    
-    search_results = []
-    for r in results:
-        img_resp = schemas.ImageResponse(
-            image_id=r.image_id,
-            image_reference=r.image_reference,
-            source=r.source,
-            timestamp=r.timestamp,
-            ocr_text=r.ocr_text,
-            metadata=r.metadata,
-            processing_state="completed"
-        )
-        search_results.append(schemas.SearchResult(
-            image=img_resp,
-            score=0.98,
-            signals={"clue_match": True, "conversational_context": 0.9}
-        ))
-    return schemas.SearchResponse(results=search_results)
-
-@app.get("/search-results/{result_id}/explanation", response_model=schemas.ExplanationResponse)
-def get_explanation(result_id: str):
-    # Stubbed explanation
-    return schemas.ExplanationResponse(
-        explanation="Matched based on OCR text and semantic similarity to your requested memory clues.",
-        evidence_signals={"ocr_matched_terms": ["python", "error"], "semantic_score": 0.88, "visual_match": False}
-    )
-
-@app.post("/actions/summarize", response_model=schemas.SummarizeResponse)
-def summarize_images(request: schemas.SummarizeRequest):
-    # Stubbed summarization
-    return schemas.SummarizeResponse(
-        summary=f"This is a mock AI summary of {len(request.image_ids)} images. It extracts the core themes and facts across the selected visual memories."
-    )
-
-@app.post("/actions/roadmap", response_model=schemas.RoadmapResponse)
-def generate_roadmap(request: schemas.RoadmapRequest):
-    # Stubbed roadmap generation
-    goal_text = f" to achieve: {request.goal}" if request.goal else ""
-    return schemas.RoadmapResponse(
-        roadmap=f"Mock actionable roadmap{goal_text}:\n1. Review the retrieved visual notes.\n2. Synthesize information into a document.\n3. Execute the next steps."
-    )
+    return ImageStatus(imageId=image_id, status="ready")
