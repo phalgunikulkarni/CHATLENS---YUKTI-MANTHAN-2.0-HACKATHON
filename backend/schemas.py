@@ -1,60 +1,22 @@
 from datetime import datetime
-from typing import Optional, Dict, Any, List, Literal
+from typing import Optional, Dict, Any, List
+
 from pydantic import BaseModel
 
-class ImageRecord(BaseModel):
-    image_id: str
-    image_reference: str
-    source: str
-    timestamp: datetime
-    ocr_text: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
 
 class ImageResponse(BaseModel):
-    image_id: str
-    image_reference: str
-    source: str
-    timestamp: datetime
-    ocr_text: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
-    processing_state: str = "completed"
-
-class ImageUploadRequest(BaseModel):
-    image_reference: str
-    source: str
-    timestamp: datetime
-    metadata: Optional[Dict[str, Any]] = None
-
-class SearchRequest(BaseModel):
-    query: str
-
-class SearchResult(BaseModel):
-    image: ImageResponse
-    score: float
-    signals: Dict[str, Any]
-
-class SearchResponse(BaseModel):
-    results: List[SearchResult]
-
-class MessageRequest(BaseModel):
-    message: str
-
-class ExplanationResponse(BaseModel):
-    explanation: str
-    evidence_signals: Dict[str, Any]
-
-class SummarizeRequest(BaseModel):
-    image_ids: List[str]
-
-class SummarizeResponse(BaseModel):
-    summary: str
-
-class RoadmapRequest(BaseModel):
-    image_ids: List[str]
-    goal: Optional[str] = None
-
-class RoadmapResponse(BaseModel):
-    roadmap: str
+    id: str
+    original_filename: str
+    stored_path: str
+    source: Optional[str] = None
+    mime_type: str
+    file_size: int
+    width: Optional[int] = None
+    height: Optional[int] = None
+    captured_at: Optional[datetime] = None
+    created_at: datetime
+    processing_status: str
+    processing_error: Optional[str] = None
 
 # ---------------------------------------------------------------------------
 # Frontend-canonical models
@@ -82,6 +44,7 @@ class MemoryResult(BaseModel):
     fullUrl: Optional[str] = None
     ocrSnippet: Optional[str] = None
     matchScore: Optional[float] = None
+    similarity: Optional[int] = None  # 0-100 truthful similarity from real cosine signals
     sourceTag: Optional[str] = None
     capturedAt: Optional[str] = None
     metadata: Optional[Dict[str, str]] = None
@@ -128,3 +91,58 @@ class RoadmapResponseBody(BaseModel):
 class ImageStatus(BaseModel):
     imageId: str
     status: str  # uploaded|processing|indexed|ready|failed
+
+class AccessGrantResult(BaseModel):
+    authorized: bool
+    roots: List[str] = []
+    message: str
+
+class AccessStatus(BaseModel):
+    authorized: bool
+    indexing: str           # idle | running | ready | failed
+    roots: List[str] = []
+    indexedCount: int = 0
+    error: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Chat persistence DTOs (Phase B)
+#
+# camelCase to match the frontend TypeScript contract (consistent with the
+# frontend-canonical models above). TurnResponse is intentionally NOT changed.
+# ---------------------------------------------------------------------------
+
+class CreateChat(BaseModel):
+    # Optional client-supplied title; the session id is always backend-authoritative.
+    title: Optional[str] = None
+
+
+class ConversationSummary(BaseModel):
+    sessionId: str
+    title: Optional[str] = None
+    createdAt: Optional[str] = None
+    updatedAt: Optional[str] = None
+
+
+class ResultRef(BaseModel):
+    # Display-safe only: image_id + rank + display metadata. No paths, no binaries.
+    imageId: str
+    rank: int
+    displayMetadata: Optional[Dict[str, Any]] = None
+
+
+class ChatMessage(BaseModel):
+    id: str
+    role: str  # user | assistant
+    content: str
+    createdAt: Optional[str] = None
+    results: List[ResultRef] = []
+
+
+class ConversationDetail(BaseModel):
+    sessionId: str
+    title: Optional[str] = None
+    createdAt: Optional[str] = None
+    updatedAt: Optional[str] = None
+    messages: List[ChatMessage] = []
+    context: Optional[Dict[str, Any]] = None

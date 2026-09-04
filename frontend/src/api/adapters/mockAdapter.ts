@@ -1,9 +1,12 @@
 import type { ApiService } from "../ApiService";
 import type {
+  AccessGrantResult,
+  AccessStatus,
+  ConversationDetail,
+  ConversationSummary,
   ExplanationSignal,
   ImageQaRequest,
   ImageQaResponse,
-  ImageStatus,
   MemoryClue,
   RefineRequest,
   RoadmapRequest,
@@ -159,6 +162,11 @@ export class MockAdapter implements ApiService {
   private readonly latencyMs: number;
   private readonly failAll: boolean;
   private sessionCounter = 0;
+  private chatCounter = 0;
+  // SYNTHETIC in-memory chat store. NOT genuine user history; it exists only so
+  // the durable-chat flow can be exercised without a live backend. Mirrors how
+  // search/refine are faked above.
+  private readonly chats = new Map<string, ConversationDetail>();
 
   constructor(options: MockAdapterOptions = {}) {
     this.latencyMs = options.latencyMs ?? 650;
@@ -247,12 +255,63 @@ export class MockAdapter implements ApiService {
     await this.simulate();
     return { confirmed: true };
   }
-  async uploadImage(file: File): Promise<ImageStatus> {
-    await this.simulate();
-    return { imageId: `mock-upload-${file.name}`, status: "processing" };
+  // ---- Account-scoped chat persistence (SYNTHETIC in-memory) ----
+  private summaryOf(d: ConversationDetail): ConversationSummary {
+    return { sessionId: d.sessionId, title: d.title, createdAt: d.createdAt, updatedAt: d.updatedAt };
   }
-  async getImageStatus(imageId: string): Promise<ImageStatus> {
+  async createChat(title?: string): Promise<ConversationSummary> {
     await this.simulate();
-    return { imageId, status: "ready" };
+    this.chatCounter += 1;
+    const now = new Date().toISOString();
+    const detail: ConversationDetail = {
+      sessionId: `mock-chat-${this.chatCounter}`,
+      title: title,
+      createdAt: now,
+      updatedAt: now,
+      messages: [],
+      context: undefined,
+    };
+    this.chats.set(detail.sessionId, detail);
+    return this.summaryOf(detail);
+  }
+  async listChats(): Promise<ConversationSummary[]> {
+    await this.simulate();
+    // Newest first, matching the backend list ordering contract.
+    return [...this.chats.values()].map((d) => this.summaryOf(d)).reverse();
+  }
+  async getChat(sessionId: string): Promise<ConversationDetail> {
+    await this.simulate();
+    const d = this.chats.get(sessionId);
+    if (!d) throw new Error(`Request failed: 404`);
+    return d;
+  }
+  async deleteChat(sessionId: string): Promise<void> {
+    await this.simulate();
+    this.chats.delete(sessionId);
+  }
+  async renameChat(sessionId: string, title: string): Promise<ConversationSummary> {
+    await this.simulate();
+    const d = this.chats.get(sessionId);
+    if (!d) throw new Error(`Request failed: 404`);
+    d.title = title;
+    d.updatedAt = new Date().toISOString();
+    return this.summaryOf(d);
+  }
+  async listLibrary(): Promise<SearchResult[]> {
+    await this.simulate();
+    // SYNTHETIC dev/demo data - a curated read from MOCK_MEMORIES so the mock
+    // stays internally consistent. NOT genuine user history.
+    return MOCK_MEMORIES;
+  }
+  async grantAccess(): Promise<AccessGrantResult> {
+    // DEV/DEMO stub - NOT the production path. Reports a synthetic authorized
+    // folder so the onboarding flow can be exercised without a live backend.
+    await this.simulate();
+    return { authorized: true, roots: ["<mock-folder>"], message: "Folder authorized (mock)." };
+  }
+  async getAccessStatus(): Promise<AccessStatus> {
+    // DEV/DEMO stub - NOT the production path.
+    await this.simulate();
+    return { authorized: true, indexing: "ready", roots: ["<mock-folder>"], indexedCount: 0, error: null };
   }
 }

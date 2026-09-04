@@ -3,3 +3,10 @@ uvicorn
 pydantic
 sqlalchemy
 python-multipart
+Pillow
+chromadb
+transformers
+torch
+sentence-transformers
+numpy
+# ML retrieval (ml/) additionally requires paddleocr, paddlepaddle, chromadb per ml/requirements.txt

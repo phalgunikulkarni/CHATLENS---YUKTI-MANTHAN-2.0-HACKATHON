@@ -40,6 +40,28 @@ function makeToken(): string {
   return `dev-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
 }
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/**
+ * Deterministic, dependency-free stable account id derived from the normalized
+ * email. Uses a small synchronous FNV-1a 32-bit string hash so the same email
+ * always yields the same id (no async/crypto). This keeps per-user state (e.g.
+ * onboarding) attached to a stable identity across logins, unlike a random
+ * token. NOT a security credential.
+ */
+function stableAccountId(email: string): string {
+  const norm = normalizeEmail(email);
+  let h = 0x811c9dc5; // FNV-1a 32-bit offset basis
+  for (let i = 0; i < norm.length; i++) {
+    h ^= norm.charCodeAt(i);
+    h = Math.imul(h, 0x01000193); // FNV prime
+  }
+  // unsigned hex, stable for the same email
+  return `acct-${(h >>> 0).toString(16)}`;
+}
+
 function nameFromEmail(email: string): string {
   const local = email.split("@")[0] ?? "You";
   return local
@@ -65,7 +87,7 @@ class DevAuthService implements AuthService {
     if (!req.email.includes("@") || req.password.length < 8) {
       throw new Error("INVALID_CREDENTIALS");
     }
-    const user: User = { id: makeToken(), name: nameFromEmail(req.email), email: req.email };
+    const user: User = { id: stableAccountId(req.email), name: nameFromEmail(req.email), email: normalizeEmail(req.email) };
     const session = { user, token: makeToken() };
     persist(session, Boolean(req.remember));
     return session;
@@ -76,7 +98,7 @@ class DevAuthService implements AuthService {
     if (!req.email.includes("@") || req.password.length < 8) {
       throw new Error("INVALID_REGISTRATION");
     }
-    const user: User = { id: makeToken(), name: req.name.trim() || nameFromEmail(req.email), email: req.email };
+    const user: User = { id: stableAccountId(req.email), name: req.name.trim() || nameFromEmail(req.email), email: normalizeEmail(req.email) };
     const session = { user, token: makeToken() };
     persist(session, true);
     return session;

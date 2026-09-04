@@ -1,7 +1,7 @@
 import type { SearchResult } from "../../api/types";
-import { hasText, hasNumber } from "../../utils/guards";
+import { hasText } from "../../utils/guards";
 import { deriveAltText } from "../../utils/altText";
-import { formatDate, formatScore, CATEGORY_LABEL } from "../../utils/format";
+import { formatDate, CATEGORY_LABEL } from "../../utils/format";
 import { Icon } from "../../components/Icon";
 import { SourceBadge } from "../../components/SourceBadge";
 
@@ -27,9 +27,6 @@ export function MemoryCard({ result, selected, view, onToggleSelect, onOpen, onW
         style={{ border: "none", padding: 0, cursor: "pointer" }}
       >
         <img src={result.thumbnailUrl} alt={deriveAltText(result)} loading="lazy" />
-        {hasNumber(result.matchScore) && (
-          <span className="score-badge">{formatScore(result.matchScore)} Match</span>
-        )}
         <span className="select-tick"><Icon name="check" size={16} /></span>
       </button>
       <div className="card-body">

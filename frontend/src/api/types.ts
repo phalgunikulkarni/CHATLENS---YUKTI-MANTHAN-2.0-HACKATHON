@@ -50,6 +50,12 @@ export interface SearchResult {
   ocrSnippet?: string;
   /** Supporting context only - never the sole explanation. */
   matchScore?: number;
+  /**
+   * Truthful 0-100 similarity derived from real cosine signals (not the fused
+   * score). Backend still returns this; it is NO LONGER displayed in the UI
+   * (retrieval percentages were removed as a presentation decision).
+   */
+  similarity?: number;
   /** Source or type tag. */
   sourceTag?: string;
   /** Where the memory came from, when the Backend reports it. */
@@ -131,6 +137,27 @@ export interface ImageStatus {
   status: ProcessingStatus;
 }
 
+// ---- Local-folder access + indexing ----
+
+/** Result of opening the native folder picker + starting indexing (server-side). */
+export interface AccessGrantResult {
+  authorized: boolean;
+  roots: string[];
+  message: string;
+}
+
+/** Backend-driven indexing lifecycle for the authorized folders. */
+export type IndexingStatus = "idle" | "running" | "ready" | "failed";
+
+/** Authorization + indexing status, polled after a grant. */
+export interface AccessStatus {
+  authorized: boolean;
+  indexing: IndexingStatus;
+  roots: string[];
+  indexedCount: number;
+  error?: string | null;
+}
+
 // ---- Request models ----
 
 export interface SearchRequest {
@@ -162,6 +189,53 @@ export interface ScheduleProposeRequest {
 export interface ScheduleConfirmRequest {
   sessionId: string;
   events: ProposedEvent[];
+}
+
+// ---- Account-scoped chat persistence (backend-durable) ----
+//
+// These mirror the backend camelCase DTOs in backend/schemas.py byte-for-byte
+// (CreateChat, ConversationSummary, ResultRef, ChatMessage, ConversationDetail).
+// The backend is the durable source of truth; the frontend snapshot cache is a
+// cache keyed by the canonical `sessionId` these return.
+
+/** Request body for creating a durable conversation. Session id is server-minted. */
+export interface CreateChatRequest {
+  /** Optional client-supplied title; the session id is always backend-authoritative. */
+  title?: string;
+}
+
+/** A conversation list/summary row, scoped to the requesting account. */
+export interface ConversationSummary {
+  sessionId: string;
+  title?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** A display-safe reference to a retrieved image (no paths, no binaries). */
+export interface ResultRef {
+  imageId: string;
+  rank: number;
+  displayMetadata?: Record<string, unknown>;
+}
+
+/** A persisted chat message (user or assistant), ascending by createdAt. */
+export interface ChatMessage {
+  id: string;
+  role: string; // "user" | "assistant"
+  content: string;
+  createdAt?: string;
+  results: ResultRef[];
+}
+
+/** Full persisted conversation: messages + result refs + context. */
+export interface ConversationDetail {
+  sessionId: string;
+  title?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  messages: ChatMessage[];
+  context?: Record<string, unknown>;
 }
 
 // ---- Connectors / external memory sources ----

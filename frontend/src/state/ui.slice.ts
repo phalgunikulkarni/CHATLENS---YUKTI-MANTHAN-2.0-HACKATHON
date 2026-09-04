@@ -29,8 +29,6 @@ export const initialUiState: UiState = {
   offline: false,
   toasts: [],
   searchHistory: loadHistory(),
-  sessionMemoryIds: [],
-  showImageReminder: false,
 };
 
 export type UiAction =
@@ -44,9 +42,7 @@ export type UiAction =
   | { type: "TOAST_DISMISSED"; id: string }
   | { type: "SEARCH_RECORDED"; entry: SearchHistoryEntry }
   | { type: "HISTORY_CLEARED" }
-  | { type: "HISTORY_ITEM_REMOVED"; id: string }
-  | { type: "SESSION_MEMORY_ADDED"; id: string }
-  | { type: "IMAGE_REMINDER_SET"; show: boolean };
+  | { type: "HISTORY_ITEM_REMOVED"; id: string };
 
 export function uiReducer(state: UiState, action: UiAction): UiState {
   switch (action.type) {
@@ -83,12 +79,6 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
       persistHistory(next);
       return { ...state, searchHistory: next };
     }
-    case "SESSION_MEMORY_ADDED":
-      return state.sessionMemoryIds.includes(action.id)
-        ? state
-        : { ...state, sessionMemoryIds: [...state.sessionMemoryIds, action.id] };
-    case "IMAGE_REMINDER_SET":
-      return { ...state, showImageReminder: action.show };
     default:
       return state;
   }

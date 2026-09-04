@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ExplanationSignal, ExplanationSignalType } from "../../api/types";
-import { hasItems, hasNumber } from "../../utils/guards";
+import { hasItems } from "../../utils/guards";
 import { Icon, type IconName } from "../../components/Icon";
 
 const ICON_MAP: Record<string, IconName> = {
@@ -31,16 +31,14 @@ const TYPE_LABEL: Record<ExplanationSignalType, string> = {
 
 /**
  * Interactive retrieval explanation. Renders each Backend-provided signal as a
- * clickable chip (with its strength %) that expands a short explanation. Renders
- * only signals present in the payload and never fabricates evidence. In demo
- * mode the block is clearly labeled as demo data.
+ * clickable chip (icon + type label) that expands a short grounded explanation.
+ * Renders only signals present in the payload and never fabricates evidence.
+ * No retrieval percentages are shown to the user.
  */
 export function RetrievalSignals({
   signals,
-  matchScore,
 }: {
   signals: ExplanationSignal[] | undefined;
-  matchScore?: number;
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
@@ -53,7 +51,6 @@ export function RetrievalSignals({
       <div className="signal-chips">
         {signals.map((s, i) => {
           const open = openIndex === i;
-          const pct = hasNumber(s.strength) ? `${Math.round(s.strength * 100)}%` : null;
           return (
             <button
               key={`${s.type}-${i}`}
@@ -63,7 +60,6 @@ export function RetrievalSignals({
             >
               <Icon name={ICON_MAP[s.icon] ?? "sparkles"} size={14} />
               <span>{TYPE_LABEL[s.type] ?? s.type}</span>
-              {pct && <strong>{pct}</strong>}
             </button>
           );
         })}
@@ -76,18 +72,7 @@ export function RetrievalSignals({
             {signals[openIndex].label}
           </div>
           <p>{TYPE_EXPLANATION[signals[openIndex].type] ?? "This signal contributed to the result."}</p>
-          {hasNumber(signals[openIndex].strength) && (
-            <div className="bar" aria-hidden="true">
-              <span style={{ width: `${Math.round((signals[openIndex].strength ?? 0) * 100)}%` }} />
-            </div>
-          )}
         </div>
-      )}
-
-      {hasNumber(matchScore) && (
-        <p className="card-date" style={{ marginTop: 10 }}>
-          Overall relevance {Math.round(matchScore * 100)}% (supporting context)
-        </p>
       )}
     </div>
   );

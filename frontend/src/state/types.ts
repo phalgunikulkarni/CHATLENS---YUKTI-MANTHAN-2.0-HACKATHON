@@ -1,6 +1,5 @@
 import type {
   MemoryClue,
-  ProcessingStatus,
   RoadmapResponse,
   ScheduleProposal,
   SearchResult,
@@ -39,29 +38,6 @@ export interface ResultsState {
   hasSearched: boolean;
 }
 
-export interface UploadValidation {
-  valid: boolean;
-  error?: string;
-}
-
-export interface UploadItem {
-  id: string;
-  fileName: string;
-  fileSize: number;
-  previewUrl: string;
-  validation: UploadValidation;
-  status: ProcessingStatus;
-  /** 0..100 upload/processing progress (client-side upload only). */
-  progress: number;
-  /** True while awaiting a backend that is not connected. */
-  awaitingBackend?: boolean;
-  error?: string;
-}
-
-export interface IngestionState {
-  queue: UploadItem[];
-}
-
 export interface ActionsState {
   summary: SummaryResponse | null;
   roadmap: RoadmapResponse | null;
@@ -80,7 +56,7 @@ export interface Toast {
   tone: ToastTone;
 }
 
-export type ViewName = "search" | "library" | "upload" | "connectors";
+export type ViewName = "search" | "library" | "connectors";
 
 export interface SearchHistoryEntry {
   id: string;
@@ -97,10 +73,6 @@ export interface UiState {
   toasts: Toast[];
   /** Real user searches performed this session (persisted to localStorage). */
   searchHistory: SearchHistoryEntry[];
-  /** Images the user uploaded this session (used by the Library until backend). */
-  sessionMemoryIds: string[];
-  /** Non-intrusive reminder to add images (set when onboarding is skipped). */
-  showImageReminder: boolean;
 }
 
 export interface RootState {
@@ -108,7 +80,6 @@ export interface RootState {
   connectors: ConnectorsState;
   conversations: ConversationsState;
   results: ResultsState;
-  ingestion: IngestionState;
   actions: ActionsState;
   ui: UiState;
 }

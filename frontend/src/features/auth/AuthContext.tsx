@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { authService } from "../../services/authService";
+import { clearAccountId, setAccountId } from "../../api/accountContext";
 import type { AuthState, LoginRequest, RegisterRequest } from "../../services/auth.types";
 
 export interface AuthContextValue extends AuthState {
@@ -27,6 +28,14 @@ function friendlyError(kind: "login" | "register"): string {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const restored = authService.restore();
+  // On session restore, prime the account holder so the very first request
+  // after a refresh already carries X-Account-Id (uses the existing
+  // stableAccountId-derived user.id; never generates a new id).
+  if (restored) {
+    setAccountId(restored.user.id);
+  } else {
+    clearAccountId();
+  }
   const [state, setState] = useState<AuthState>(
     restored
       ? { status: "authenticated", user: restored.user, token: restored.token, error: null }
@@ -37,6 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, status: "authenticating", error: null }));
     try {
       const res = await authService.login(req);
+      // Set the account holder to the signed-in user's stable id. Login always
+      // overwrites the holder, so switching account A -> B replaces A's id.
+      setAccountId(res.user.id);
       setState({ status: "authenticated", user: res.user, token: res.token, error: null });
     } catch {
       setState({ status: "error", user: null, token: null, error: friendlyError("login") });
@@ -48,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, status: "authenticating", error: null }));
     try {
       const res = await authService.register(req);
+      setAccountId(res.user.id);
       setState({ status: "authenticated", user: res.user, token: res.token, error: null });
     } catch {
       setState({ status: "error", user: null, token: null, error: friendlyError("register") });
@@ -57,6 +70,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     await authService.logout();
+    // Clear the request-layer account id so no header is sent afterward. The
+    // in-memory store reset (conversation/results/actions) is driven by the
+    // AccountResetBridge effect that observes user.id -> null within the
+    // StoreProvider subtree (see AccountResetBridge).
+    clearAccountId();
     setState({ status: "unauthenticated", user: null, token: null, error: null });
   }, []);
 

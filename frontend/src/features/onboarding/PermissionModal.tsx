@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useFocusTrap } from "../../hooks";
 import { Icon } from "../../components/Icon";
-import { IS_BACKEND_CONNECTED } from "../../api/client";
+import { apiService, IS_BACKEND_CONNECTED } from "../../api/client";
+import { isNotConnected } from "../../api/errors";
+import type { AccessStatus } from "../../api/types";
 
 type Phase = "intro" | "processing" | "done";
 
 interface Props {
-  /** Called with the images the user explicitly chose (may be empty if they
-   *  allow access but pick nothing). Should queue them via the ingestion flow. */
-  onAllow: (files: File[]) => void;
+  /** Called when the user grants ChatLens access to their image folders. */
+  onAllow: () => void;
   /** Called when the user chooses "Not now". */
   onSkip: () => void;
   /** Called once the flow completes and the dashboard should open. */
@@ -22,27 +23,32 @@ const BENEFITS = [
   "Organize your visual memory library",
 ];
 
-/** Honest processing steps - these are pending until a backend reports status. */
+/** Honest access-setup steps - these reflect backend-reported status only. */
 const STEPS = [
-  "Images selected",
+  "Access granted",
   "Preparing memories",
   "Reading image content",
   "Creating searchable representation",
 ];
 
+/** How often we poll the backend for indexing status. */
+const POLL_INTERVAL_MS = 1500;
+
 /**
  * First-time image-access onboarding modal.
  *
- * ChatLens can only work with files the user EXPLICITLY chooses - it never
- * silently accesses the device gallery. "Allow access" opens the native image
- * file picker (PNG/JPG/JPEG/WEBP, multiple allowed). No camera/mic/location.
+ * ChatLens only works with the folders the user authorizes - it never silently
+ * scans the device. "Grant Access" asks the ChatLens backend to open a native
+ * folder picker and begin indexing; this modal then reflects the backend's real
+ * authorization and indexing status. It never fabricates progress percentages
+ * or claims indexing is done before the backend reports "ready".
  */
 export function PermissionModal({ onAllow, onSkip, onComplete }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>("intro");
-  const [selectedCount, setSelectedCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [granting, setGranting] = useState(false);
+  const [indexing, setIndexing] = useState<AccessStatus["indexing"]>("idle");
   useFocusTrap(ref, true, phase === "intro" ? onSkip : undefined);
 
   // In the "done" phase, auto-advance to the dashboard after a short delay.
@@ -52,20 +58,77 @@ export function PermissionModal({ onAllow, onSkip, onComplete }: Props) {
     return () => clearTimeout(t);
   }, [phase, onComplete]);
 
-  const openPicker = () => {
-    setError(null);
-    inputRef.current?.click();
-  };
+  // Poll backend indexing status while in the processing phase. Cleans up on
+  // unmount and whenever we leave the processing phase so polling never leaks.
+  useEffect(() => {
+    if (phase !== "processing") return;
 
-  const handleFiles = (fileList: FileList | null) => {
-    const files = fileList ? Array.from(fileList) : [];
-    // The user may allow access but select nothing - that's still "granted".
-    setSelectedCount(files.length);
-    onAllow(files);
-    setPhase("processing");
-    // Brief client-side "preparing" moment, then land on the success state.
-    // We do NOT claim OCR/embeddings/indexing ran - the backend owns that.
-    setTimeout(() => setPhase("done"), 1100);
+    let aborted = false;
+
+    const poll = async () => {
+      try {
+        const status = await apiService.getAccessStatus();
+        if (aborted) return;
+        setIndexing(status.indexing);
+        if (status.indexing === "ready") {
+          aborted = true;
+          clearInterval(timer);
+          // Only now do we record the completion marker via onAllow().
+          onAllow();
+          setPhase("done");
+        } else if (status.indexing === "failed") {
+          aborted = true;
+          clearInterval(timer);
+          setError(`Indexing failed: ${status.error ?? "unknown error"}`);
+          setPhase("intro");
+        }
+      } catch (err) {
+        if (aborted) return;
+        aborted = true;
+        clearInterval(timer);
+        setError(
+          isNotConnected(err)
+            ? "ChatLens backend is not connected."
+            : "Could not check indexing status. Please try again.",
+        );
+        setPhase("intro");
+      }
+    };
+
+    const timer = setInterval(poll, POLL_INTERVAL_MS);
+    // Kick off an immediate poll so the UI reflects status without waiting.
+    void poll();
+
+    return () => {
+      aborted = true;
+      clearInterval(timer);
+    };
+  }, [phase, onAllow]);
+
+  const grantAccess = async () => {
+    if (granting) return;
+    setError(null);
+    setGranting(true);
+    try {
+      const result = await apiService.grantAccess();
+      if (!result.authorized) {
+        // e.g. "No folder selected." / "could not be authorized." - stay on intro.
+        setError(result.message);
+        return;
+      }
+      // Authorized: move to processing and let the poller drive completion.
+      setIndexing("running");
+      setPhase("processing");
+    } catch (err) {
+      setError(
+        isNotConnected(err)
+          ? "ChatLens backend is not connected."
+          : "Could not start folder access. Please try again.",
+      );
+      // Stay on intro; do NOT claim success.
+    } finally {
+      setGranting(false);
+    }
   };
 
   return (
@@ -77,9 +140,9 @@ export function PermissionModal({ onAllow, onSkip, onComplete }: Props) {
               <Icon name="image" size={34} />
               <span className="perm-illustration-badge"><Icon name="sparkles" size={14} /></span>
             </div>
-            <h2 id="perm-title" className="perm-title">Let ChatLens find your memories</h2>
+            <h2 id="perm-title" className="perm-title">Let ChatLens access your image folders</h2>
             <p className="perm-sub">
-              ChatLens needs access to your images to understand, organize, and search your visual memories.
+              ChatLens needs permission to access your existing image folders so it can understand, organize, and search your visual memories.
             </p>
 
             <ul className="perm-benefits">
@@ -96,34 +159,29 @@ export function PermissionModal({ onAllow, onSkip, onComplete }: Props) {
               </div>
             </div>
 
-            {error && <p className="perm-error" role="alert">{error}</p>}
+            {error && (
+              <p className="perm-note" role="alert" style={{ color: "var(--danger, #d64545)", marginTop: 4 }}>
+                <Icon name="wifi-off" size={14} /> {error}
+              </p>
+            )}
 
             <div className="perm-actions">
-              <button className="btn btn-ghost" onClick={onSkip}>Not now</button>
-              <button className="btn btn-primary perm-allow" onClick={openPicker}>
-                <Icon name="image" size={16} /> Allow access
+              <button className="btn btn-ghost" onClick={onSkip} disabled={granting}>Not now</button>
+              <button className="btn btn-primary perm-allow" onClick={grantAccess} disabled={granting}>
+                <Icon name="image" size={16} /> {granting ? "Opening..." : "Grant Access"}
               </button>
             </div>
-            <p className="perm-note">You will choose the images to add. ChatLens never opens your gallery on its own.</p>
-
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              multiple
-              hidden
-              onChange={(e) => handleFiles(e.target.files)}
-            />
+            <p className="perm-note">ChatLens will only access the folders you authorize.</p>
           </>
         )}
 
         {phase === "processing" && (
           <div className="perm-processing">
-            <h2 className="perm-title">Preparing your memories</h2>
+            <h2 className="perm-title">Setting up access</h2>
             <div className="pipeline" style={{ marginTop: 18, textAlign: "left" }}>
               {STEPS.map((label, i) => {
-                const done = i === 0; // only "Images selected" is truly done client-side
-                const active = i === 1;
+                const done = i === 0; // "Access granted" is confirmed once we reach processing.
+                const active = i > 0; // Indexing steps are in progress while the backend works.
                 return (
                   <div className={`pipeline-step ${done ? "done" : active ? "active" : ""}`} key={label}>
                     <span className="dot">
@@ -134,8 +192,13 @@ export function PermissionModal({ onAllow, onSkip, onComplete }: Props) {
                 );
               })}
             </div>
+            <p className="perm-note" style={{ marginTop: 14 }} aria-live="polite">
+              {indexing === "running"
+                ? "Indexing your folders..."
+                : "Setting up folder access..."}
+            </p>
             {!IS_BACKEND_CONNECTED && (
-              <p className="perm-note" style={{ marginTop: 14 }}>
+              <p className="perm-note" style={{ marginTop: 8 }}>
                 Reading content and building searchable representations run on the ChatLens backend once connected.
               </p>
             )}
@@ -147,9 +210,7 @@ export function PermissionModal({ onAllow, onSkip, onComplete }: Props) {
             <div className="success-check"><Icon name="check" size={34} /></div>
             <h2 className="perm-title">You&apos;re all set!</h2>
             <p className="perm-sub">
-              {selectedCount > 0
-                ? "ChatLens can now work with the images you chose to add."
-                : "ChatLens can now work with the images you choose to add."}
+              ChatLens can now search the folders you authorized.
             </p>
             <div className="success-sub">
               <span className="typing"><span /><span /><span /></span>

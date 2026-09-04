@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import type { SearchResult } from "../../api/types";
-import { hasNumber, hasText } from "../../utils/guards";
+import { hasText } from "../../utils/guards";
 import { deriveAltText } from "../../utils/altText";
-import { formatDate, formatScore } from "../../utils/format";
+import { formatDate } from "../../utils/format";
 import { useFocusTrap } from "../../hooks";
 import { Icon } from "../../components/Icon";
 import { RetrievalSignals } from "../explanation/RetrievalSignals";
@@ -46,11 +46,6 @@ export function ImageDetailDrawer({ result, selected, onClose, onToggleSelect, o
 
         <div className="drawer-section">
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            {hasNumber(result.matchScore) && (
-              <span className="score-badge" style={{ position: "static", background: "var(--navy)" }}>
-                {formatScore(result.matchScore)} Match
-              </span>
-            )}
             {hasText(result.sourceTag) && <span className="sig-tag">{result.sourceTag}</span>}
             {date && <span className="card-date">{date}</span>}
           </div>
@@ -98,7 +93,7 @@ export function ImageDetailDrawer({ result, selected, onClose, onToggleSelect, o
           <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Icon name="sparkles" size={16} style={{ color: "var(--accent)" }} /> Why this result?
           </div>
-          <RetrievalSignals signals={result.explanation} matchScore={result.matchScore} />
+          <RetrievalSignals signals={result.explanation} />
         </div>
 
         <div className="drawer-section" style={{ borderBottom: "none" }}>

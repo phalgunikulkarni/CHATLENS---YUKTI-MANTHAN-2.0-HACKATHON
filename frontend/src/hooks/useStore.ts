@@ -17,7 +17,6 @@ export function useDispatch(): Dispatch<AppAction> {
 
 export const useConversation = () => useRootState().conversation;
 export const useResults = () => useRootState().results;
-export const useIngestion = () => useRootState().ingestion;
 export const useActions = () => useRootState().actions;
 export const useConnectors = () => useRootState().connectors;
 export const useConversations = () => useRootState().conversations;

@@ -22,8 +22,16 @@ export const ENDPOINTS = {
   schedulePropose: "/api/actions/schedule/propose",
   /** POST - create events only after explicit user confirmation. */
   scheduleConfirm: "/api/actions/schedule/confirm",
-  /** POST - upload one image for ingestion. */
-  images: "/api/images",
-  /** GET - poll processing status for an ingested image. */
-  imageStatus: (id: string) => `/api/images/${id}/status`,
+  /** POST - create a durable, backend-owned conversation (returns canonical sessionId). */
+  chatsCreate: "/api/chats",
+  /** GET - list the signed-in account's durable conversations (account-scoped). */
+  chatsList: "/api/chats",
+  /** GET/PATCH/DELETE - a single conversation by canonical sessionId. */
+  chat: (id: string) => `/api/chats/${id}`,
+  /** GET - read-only list of the canonical ML/Chroma indexed memories. */
+  library: "/api/library",
+  /** POST - open native folder picker + start indexing (server-side). */
+  accessGrant: "/api/access/grant",
+  /** GET - poll authorization + indexing status. */
+  accessStatus: "/api/access/status",
 } as const;

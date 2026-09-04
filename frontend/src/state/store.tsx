@@ -3,24 +3,33 @@ import { actionsReducer, initialActionsState, type ActionsAction } from "./actio
 import { connectorsReducer, initialConnectorsState, type ConnectorsAction } from "./connectors.slice";
 import { conversationReducer, initialConversationState, type ConversationAction } from "./conversation.slice";
 import { initialConversationsState, type ConversationsAction } from "./conversations.slice";
-import { ingestionReducer, initialIngestionState, type IngestionAction } from "./ingestion.slice";
 import { initialResultsState, resultsReducer, type ResultsAction } from "./results.slice";
 import { initialUiState, uiReducer, type UiAction } from "./ui.slice";
 import type { RootState } from "./types";
 
+/**
+ * Account-lifecycle reset. Dispatched by the auth lifecycle when the signed-in
+ * account changes or on logout so no prior-account conversation/results/actions
+ * content lingers in the UI. Resets ONLY the account-specific slices
+ * (conversation, conversations, results, actions); connectors and ui are left
+ * untouched. `STATE_RESET` is an alias with identical semantics.
+ */
+export type AccountLifecycleAction =
+  | { type: "ACCOUNT_CHANGED" }
+  | { type: "STATE_RESET" };
+
 export type AppAction =
   | ConversationAction
   | ResultsAction
-  | IngestionAction
   | ActionsAction
   | ConnectorsAction
   | ConversationsAction
-  | UiAction;
+  | UiAction
+  | AccountLifecycleAction;
 
 export const initialRootState: RootState = {
   conversation: initialConversationState,
   results: initialResultsState,
-  ingestion: initialIngestionState,
   actions: initialActionsState,
   connectors: initialConnectorsState,
   conversations: initialConversationsState,
@@ -32,7 +41,6 @@ export function rootReducer(state: RootState, action: AppAction): RootState {
   let next: RootState = {
     conversation: conversationReducer(state.conversation, action as ConversationAction),
     results: resultsReducer(state.results, action as ResultsAction),
-    ingestion: ingestionReducer(state.ingestion, action as IngestionAction),
     actions: actionsReducer(state.actions, action as ActionsAction),
     connectors: connectorsReducer(state.connectors, action as ConnectorsAction),
     ui: uiReducer(state.ui, action as UiAction),
@@ -40,6 +48,18 @@ export function rootReducer(state: RootState, action: AppAction): RootState {
   };
 
   switch (action.type) {
+    case "ACCOUNT_CHANGED":
+    case "STATE_RESET": {
+      // Reset only the account-specific slices; leave connectors and ui alone.
+      next = {
+        ...next,
+        conversation: initialConversationState,
+        results: initialResultsState,
+        actions: initialActionsState,
+        conversations: initialConversationsState,
+      };
+      return next;
+    }
     case "CONVERSATION_NEW": {
       const convs = next.conversations;
       // Archive the current live slices under the currently active id (if any).
@@ -95,6 +115,27 @@ export function rootReducer(state: RootState, action: AppAction): RootState {
           summaries: convs.summaries.map((s) =>
             s.id === action.id && !s.title ? { ...s, title: action.title } : s
           ),
+        },
+      };
+      return next;
+    }
+    case "CONVERSATIONS_LOADED": {
+      // Populate the conversation list from backend-durable summaries. The
+      // canonical backend sessionId becomes the local summary id so selection
+      // and hydration target the same conversation. Backend order (newest
+      // first) is preserved. No snapshots are created here; selecting a
+      // conversation hydrates its transcript via getChat on demand.
+      const summaries = action.summaries.map((s) => ({
+        id: s.sessionId,
+        title: s.title ?? "",
+        createdAt: s.createdAt ? Date.parse(s.createdAt) || 0 : 0,
+      }));
+      next = {
+        ...next,
+        conversations: {
+          summaries,
+          activeId: null,
+          snapshots: {},
         },
       };
       return next;

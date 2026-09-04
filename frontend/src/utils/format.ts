@@ -1,7 +1,3 @@
-export function formatScore(score: number): string {
-  return `${Math.round(score * 100)}%`;
-}
-
 export function formatDate(iso: string | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);

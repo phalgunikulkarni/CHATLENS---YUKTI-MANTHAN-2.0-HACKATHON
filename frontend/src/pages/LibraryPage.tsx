@@ -1,77 +1,58 @@
-import { useMemo, useState } from "react";
-import { useDispatch, useIngestion } from "../hooks";
-import type { ConnectorMemorySource, SearchResult } from "../api/types";
+import { useEffect, useState } from "react";
+import type { SearchResult } from "../api/types";
+import { apiService } from "../api/client";
+import { isNotConnected } from "../api/errors";
 import { MemoryGrid } from "../features/results/MemoryGrid";
-import { SourceFilter, type SourceFilterValue } from "../features/results/SourceFilter";
 import { EmptyState } from "../components/States";
-import { Icon } from "../components/Icon";
+import { SkeletonGrid } from "../components/SkeletonGrid";
 
 /**
- * The library shows ONLY what the user actually added this session (their valid
- * uploads). No demo/fake memories. When the backend is connected it will supply
- * the persisted library (including connector-sourced memories); until then this
- * reflects real in-session uploads, tagged with the "uploaded" source.
+ * The library shows the user's canonical, indexed visual memories, read from
+ * the read-only /api/library endpoint (backed by ML/Chroma). It never
+ * fabricates memories: an honest empty/not-connected/error state is shown
+ * whenever the backend has nothing (or can't be reached).
  */
+
+type LibraryStatus = "loading" | "ready" | "empty" | "notConnected" | "error";
+
 export function LibraryPage() {
-  const { queue } = useIngestion();
-  const dispatch = useDispatch();
-  const [q, setQ] = useState("");
-  const [source, setSource] = useState<SourceFilterValue>("all");
+  const [items, setItems] = useState<SearchResult[]>([]);
+  const [status, setStatus] = useState<LibraryStatus>("loading");
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const uploaded: SearchResult[] = useMemo(
-    () =>
-      queue
-        .filter((it) => it.validation.valid)
-        .map((it) => ({
-          id: it.id,
-          thumbnailUrl: it.previewUrl,
-          fullUrl: it.previewUrl,
-          title: it.fileName,
-          sourceTag: "Uploaded this session",
-          memorySource: "uploaded" as ConnectorMemorySource,
-          // No OCR/score/metadata/explanation invented - those come from the backend.
-        })),
-    [queue]
-  );
+  useEffect(() => {
+    let cancelled = false;
+    setStatus("loading");
 
-  const availableSources = useMemo(() => {
-    const set = new Set<ConnectorMemorySource>();
-    uploaded.forEach((m) => { if (m.memorySource) set.add(m.memorySource); });
-    return [...set];
-  }, [uploaded]);
-
-  const items = useMemo(
-    () =>
-      uploaded.filter((m) => {
-        const qOk = q.trim() === "" || (m.title ?? "").toLowerCase().includes(q.toLowerCase());
-        const sOk = source === "all" || m.memorySource === source;
-        return qOk && sOk;
-      }),
-    [uploaded, q, source]
-  );
-
-  if (uploaded.length === 0) {
-    return (
-      <EmptyState
-        icon="library"
-        title="No memories yet"
-        message="Upload your images to start building your visual memory."
-        action={
-          <button className="btn btn-primary" onClick={() => dispatch({ type: "VIEW_CHANGED", view: "upload" })}>
-            <Icon name="upload" size={16} /> Upload images
-          </button>
+    apiService
+      .listLibrary()
+      .then((result) => {
+        if (cancelled) return;
+        if (result.length > 0) {
+          setItems(result);
+          setStatus("ready");
+        } else {
+          setItems([]);
+          setStatus("empty");
         }
-      />
-    );
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setItems([]);
+        setStatus(isNotConnected(err) ? "notConnected" : "error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  if (status === "loading") {
+    return <SkeletonGrid count={6} />;
   }
 
-  return (
-    <div>
-      <div className="searchbar" style={{ boxShadow: "var(--shadow)", marginTop: 0, marginBottom: 18, maxWidth: 520 }}>
-        <Icon name="search" size={20} className="search-icon" />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search within your memories" aria-label="Search within memories" />
-      </div>
-      <SourceFilter available={availableSources} value={source} onChange={setSource} />
+  if (status === "ready") {
+    return (
       <MemoryGrid
         results={items}
         selectedIds={[]}
@@ -80,6 +61,40 @@ export function LibraryPage() {
         onOpen={() => {}}
         onWhy={() => {}}
       />
-    </div>
+    );
+  }
+
+  if (status === "notConnected") {
+    return (
+      <EmptyState
+        icon="library"
+        title="Connect ChatLens to see your memories"
+        message="Your indexed memories will appear here once ChatLens is connected to your library."
+      />
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <EmptyState
+        icon="library"
+        title="Couldn't load your memories"
+        message="Something went wrong loading your library. Please try again."
+        action={
+          <button className="btn btn-primary" onClick={() => setReloadKey((k) => k + 1)}>
+            Try again
+          </button>
+        }
+      />
+    );
+  }
+
+  // empty
+  return (
+    <EmptyState
+      icon="library"
+      title="No memories yet"
+      message="Once ChatLens has access to your image folders and finishes indexing them, your searchable memories will appear here."
+    />
   );
 }

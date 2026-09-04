@@ -1,10 +1,13 @@
 import type { ApiService } from "../ApiService";
 import { NotConnectedError } from "../errors";
 import type {
+  AccessGrantResult,
+  AccessStatus,
+  ConversationDetail,
+  ConversationSummary,
   ExplanationSignal,
   ImageQaRequest,
   ImageQaResponse,
-  ImageStatus,
   RefineRequest,
   RoadmapRequest,
   RoadmapResponse,
@@ -12,6 +15,7 @@ import type {
   ScheduleProposal,
   ScheduleProposeRequest,
   SearchRequest,
+  SearchResult,
   SummarizeRequest,
   SummaryResponse,
   TurnResponse,
@@ -34,6 +38,12 @@ export class NotConnectedAdapter implements ApiService {
   async roadmap(_req: RoadmapRequest): Promise<RoadmapResponse> { this.fail(); }
   async proposeSchedule(_req: ScheduleProposeRequest): Promise<ScheduleProposal> { this.fail(); }
   async confirmSchedule(_req: ScheduleConfirmRequest): Promise<{ confirmed: boolean }> { this.fail(); }
-  async uploadImage(_file: File): Promise<ImageStatus> { this.fail(); }
-  async getImageStatus(_imageId: string): Promise<ImageStatus> { this.fail(); }
+  async createChat(_title?: string): Promise<ConversationSummary> { this.fail(); }
+  async listChats(): Promise<ConversationSummary[]> { this.fail(); }
+  async getChat(_sessionId: string): Promise<ConversationDetail> { this.fail(); }
+  async deleteChat(_sessionId: string): Promise<void> { this.fail(); }
+  async renameChat(_sessionId: string, _title: string): Promise<ConversationSummary> { this.fail(); }
+  async listLibrary(): Promise<SearchResult[]> { this.fail(); }
+  async grantAccess(): Promise<AccessGrantResult> { this.fail(); }
+  async getAccessStatus(): Promise<AccessStatus> { this.fail(); }
 }

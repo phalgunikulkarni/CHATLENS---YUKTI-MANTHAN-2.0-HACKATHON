@@ -17,6 +17,15 @@ export type ConversationAction =
   | { type: "TURN_RECEIVED"; id: string; turn: TurnResponse }
   | { type: "TURN_NOT_CONNECTED"; id: string; message: string }
   | { type: "CLUE_REMOVED"; clueId: string }
+  | {
+      // Hydrate a conversation transcript from backend-durable storage (getChat).
+      // Replaces the in-memory transcript with the persisted messages for the
+      // canonical session so a refresh/login restores prior turns.
+      type: "CONVERSATION_HYDRATED";
+      sessionId: string;
+      messages: TurnTranscriptEntry[];
+      activeClues: MemoryClue[];
+    }
   | { type: "SESSION_ENDED" };
 
 /** Append only clues whose id is not already present (dedupe by id, keep order). */
@@ -87,6 +96,13 @@ export function conversationReducer(
     }
     case "CLUE_REMOVED":
       return { ...state, activeClues: state.activeClues.filter((c) => c.id !== action.clueId) };
+    case "CONVERSATION_HYDRATED":
+      return {
+        ...initialConversationState,
+        sessionId: action.sessionId,
+        messages: action.messages,
+        activeClues: action.activeClues,
+      };
     case "SESSION_ENDED":
       return { ...initialConversationState };
     default:

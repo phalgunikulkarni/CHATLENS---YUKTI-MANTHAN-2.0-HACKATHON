@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ConnectorMemorySource } from "../api/types";
-import { useActions, useConversation, useDispatch, useResults, useUi } from "../hooks";
+import { useActions, useConversation, useResults, useUi } from "../hooks";
 import { useChatLens } from "../hooks/useChatLens";
 import { SearchHero } from "../features/results/SearchHero";
 import { ResultsHeader } from "../features/results/ResultsHeader";
@@ -21,7 +21,6 @@ export function SearchWorkspace() {
   const conversation = useConversation();
   const actions = useActions();
   const ui = useUi();
-  const dispatch = useDispatch();
   const c = useChatLens();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [source, setSource] = useState<SourceFilterValue>("all");
@@ -44,7 +43,7 @@ export function SearchWorkspace() {
   return (
     <div>
       {!results.hasSearched ? (
-        <SearchHero onSearch={c.runSearch} onUpload={() => dispatch({ type: "VIEW_CHANGED", view: "upload" })} />
+        <SearchHero onSearch={c.runSearch} />
       ) : (
         <div className="workspace">
           <div className="results-col">

@@ -3,7 +3,6 @@ export {
   useDispatch,
   useConversation,
   useResults,
-  useIngestion,
   useActions,
   useConnectors,
   useConversations,

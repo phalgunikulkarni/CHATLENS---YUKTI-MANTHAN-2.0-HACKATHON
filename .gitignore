@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 .venv/
@@ -33,5 +33,24 @@ data/*
 !data/.gitkeep
 
 # Logs
-*.logchroma_db/
+*.log
+*_run.log
+
+# Local SQLite databases (runtime/generated; never commit)
+*.db
+chatlens.db
+backend/chatlens.db
+
+# Local vector store (Chroma) data (runtime/generated)
+chroma_db/
 ml/vectorstore/chroma_db/
+
+# Local virtual environment
+.venv-chatlens/
+
+# Local diagnostic / scratch artifacts
+import_err.txt
+
+# Local authorized folder roots (server-side access state)
+authorized_locations.json
+backend/authorized_locations.json

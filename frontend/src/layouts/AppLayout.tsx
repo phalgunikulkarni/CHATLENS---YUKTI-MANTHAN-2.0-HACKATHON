@@ -9,12 +9,11 @@ import { ToastHost } from "../components/ToastHost";
 const TITLES: Record<ViewName, string> = {
   search: "Visual memory search",
   library: "Your memory library",
-  upload: "Add memories",
   connectors: "Connect your memories",
 };
 
 export function AppLayout({ children }: { children: ReactNode }) {
-  const { view, offline, showImageReminder } = useUi();
+  const { view, offline } = useUi();
   const conversations = useConversations();
   const c = useChatLens();
   const dispatch = useDispatch();
@@ -51,26 +50,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </button>
             <span className="topbar-title">{TITLES[view]}</span>
           </div>
-          <button className="btn btn-subtle" onClick={() => navigate("upload")}>
-            <Icon name="upload" size={16} /> Upload
-          </button>
         </div>
-
-        {showImageReminder && (
-          <div className="reminder-bar" role="note">
-            <span className="reminder-text">
-              <Icon name="image" size={16} /> Add your visual memories to start searching.
-            </span>
-            <span className="reminder-actions">
-              <button className="btn btn-primary" onClick={() => { navigate("upload"); dispatch({ type: "IMAGE_REMINDER_SET", show: false }); }}>
-                <Icon name="upload" size={15} /> Upload images
-              </button>
-              <button className="icon-btn" aria-label="Dismiss reminder" onClick={() => dispatch({ type: "IMAGE_REMINDER_SET", show: false })}>
-                <Icon name="close" size={16} />
-              </button>
-            </span>
-          </div>
-        )}
 
         <main className="content">{children}</main>
       </div>

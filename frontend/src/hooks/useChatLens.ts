@@ -1,14 +1,38 @@
 import { useCallback } from "react";
+import type { Dispatch } from "react";
 import { apiService } from "../api/client";
 import { isNotConnected } from "../api/errors";
+import type { ConversationDetail } from "../api/types";
 import { useConversation, useConversations, useDispatch, useResults } from "../hooks";
+import type { AppAction } from "../state/store";
 import { makeTitle } from "../state/conversations.slice";
-import { validateFile } from "../state/ingestion.slice";
-import type { UploadItem } from "../state/types";
+import type { TurnTranscriptEntry } from "../state/types";
 import { uid } from "../utils/format";
 
 const NOT_CONNECTED_MSG =
   "ChatLens backend is not connected yet. Connect the backend to retrieve your memories.";
+
+/**
+ * Map a backend-durable ConversationDetail into the in-memory transcript and
+ * dispatch a hydration. The backend is the source of truth; we only reconstruct
+ * what it actually persisted (role + text). Result grid items are NOT
+ * fabricated here — ResultRefs carry only image ids + display metadata (no
+ * thumbnails), and per the data-integrity rule we never invent image URLs. The
+ * live results grid reflects real retrieval; the transcript reflects history.
+ */
+function hydrateConversation(dispatch: Dispatch<AppAction>, detail: ConversationDetail): void {
+  const messages: TurnTranscriptEntry[] = detail.messages.map((m) => ({
+    id: m.id,
+    role: m.role === "user" ? "user" : "agent",
+    text: m.content,
+  }));
+  dispatch({
+    type: "CONVERSATION_HYDRATED",
+    sessionId: detail.sessionId,
+    messages,
+    activeClues: [],
+  });
+}
 
 /**
  * Orchestration hook: the ONLY place the UI talks to the API service. It maps
@@ -22,15 +46,47 @@ export function useChatLens() {
   const conversations = useConversations();
   const results = useResults();
 
-  const newConversation = useCallback(() => {
-    dispatch({ type: "CONVERSATION_NEW", id: uid("conv"), createdAt: Date.now() });
+  /**
+   * New Chat becomes backend-durable. We ask the backend to mint a canonical
+   * conversation and adopt its `sessionId` as BOTH the summary id and the
+   * session id, so the in-memory snapshot cache is keyed by the canonical id
+   * and search/refine target the same backend conversation. When the backend
+   * is not connected (or the call fails) we fall back to a local-only id so the
+   * mock / not-connected UX still works exactly as before.
+   */
+  const newConversation = useCallback(async () => {
     dispatch({ type: "VIEW_CHANGED", view: "search" });
+    try {
+      const summary = await apiService.createChat();
+      dispatch({ type: "CONVERSATION_NEW", id: summary.sessionId, createdAt: Date.now() });
+      dispatch({ type: "SESSION_STARTED", sessionId: summary.sessionId });
+      if (summary.title) {
+        dispatch({ type: "CONVERSATION_TITLED", id: summary.sessionId, title: summary.title });
+      }
+    } catch {
+      // NotConnected or transient failure: keep New Chat usable with a local id.
+      // The first search will still create/adopt a backend session when possible.
+      dispatch({ type: "CONVERSATION_NEW", id: uid("conv"), createdAt: Date.now() });
+    }
   }, [dispatch]);
 
+  /**
+   * Selecting a conversation hydrates its persisted messages/results from the
+   * backend (source of truth). The store swap (CONVERSATION_SELECTED) restores
+   * the cached snapshot first; then getChat hydrates the durable transcript so
+   * a page refresh / fresh login still shows prior turns. NotConnected falls
+   * back to whatever snapshot the cache holds.
+   */
   const selectConversation = useCallback(
-    (id: string) => {
+    async (id: string) => {
       dispatch({ type: "CONVERSATION_SELECTED", id });
       dispatch({ type: "VIEW_CHANGED", view: "search" });
+      try {
+        const detail = await apiService.getChat(id);
+        hydrateConversation(dispatch, detail);
+      } catch {
+        // NotConnected / missing: keep the cached snapshot; never fabricate.
+      }
     },
     [dispatch]
   );
@@ -39,27 +95,43 @@ export function useChatLens() {
     async (query: string) => {
       dispatch({ type: "VIEW_CHANGED", view: "search" });
 
-      // Ensure there is an active conversation, then title it deterministically.
-      // When activeId is null we cannot read the new id back synchronously, so we
-      // pre-compute the id and reuse it for the title dispatch. The root reducer
-      // creates the summary (CONVERSATION_NEW) before it processes the title.
-      const newId = uid("conv");
-      const convId = conversations.activeId ?? newId;
-      if (!conversations.activeId) {
-        dispatch({ type: "CONVERSATION_NEW", id: newId, createdAt: Date.now() });
+      // Resolve the canonical backend session to target. Guard against creating
+      // a new backend chat on every search: only create one when there is NO
+      // active conversation yet (explicit New Chat already created its own).
+      let sessionId = conversation.sessionId ?? undefined;
+      let convId = conversations.activeId ?? undefined;
+
+      if (!convId) {
+        // First search with no active conversation: create a durable backend
+        // conversation and adopt its canonical id. Falls back to a local id when
+        // the backend is not connected so the mock/offline path still works.
+        try {
+          const summary = await apiService.createChat();
+          convId = summary.sessionId;
+          sessionId = summary.sessionId;
+          dispatch({ type: "CONVERSATION_NEW", id: summary.sessionId, createdAt: Date.now() });
+          dispatch({ type: "SESSION_STARTED", sessionId: summary.sessionId });
+        } catch {
+          convId = uid("conv");
+          dispatch({ type: "CONVERSATION_NEW", id: convId, createdAt: Date.now() });
+        }
       }
+
       const activeSummary = conversations.summaries.find((s) => s.id === convId);
-      if (!activeSummary || !activeSummary.title) {
+      if ((!activeSummary || !activeSummary.title) && convId) {
         dispatch({ type: "CONVERSATION_TITLED", id: convId, title: makeTitle(query) });
+        // Persist the title for the owner (best-effort; ignore when not connected).
+        if (sessionId) void apiService.renameChat(sessionId, makeTitle(query)).catch(() => {});
       }
 
       dispatch({ type: "USER_MESSAGE_ADDED", id: uid("u"), text: query });
       dispatch({ type: "TURN_STARTED" });
       dispatch({ type: "SEARCH_STARTED", query });
       try {
-        const turn = await apiService.search({ query, sessionId: conversation.sessionId ?? undefined });
+        const turn = await apiService.search({ query, sessionId });
         dispatch({ type: "TURN_RECEIVED", id: uid("a"), turn });
         dispatch({ type: "RESULTS_REPLACED", items: turn.results ?? [], query });
+        // Adopt the backend-canonical session id (creates one when we had none).
         if (turn.sessionId) dispatch({ type: "SESSION_STARTED", sessionId: turn.sessionId });
       } catch (err) {
         if (isNotConnected(err)) {
@@ -208,31 +280,10 @@ export function useChatLens() {
     dispatch({ type: "PROPOSAL_CLEARED" });
   }, [dispatch]);
 
-  const queueFiles = useCallback((files: File[]) => {
-    const items: UploadItem[] = files.map((f) => {
-      const validation = validateFile(f.type, f.size);
-      return {
-        id: uid("up"),
-        fileName: f.name,
-        fileSize: f.size,
-        previewUrl: URL.createObjectURL(f),
-        validation,
-        status: validation.valid ? "uploaded" : "failed",
-        progress: validation.valid ? 100 : 0,
-        // Valid files are uploaded client-side but await real backend processing.
-        awaitingBackend: validation.valid,
-      };
-    });
-    dispatch({ type: "FILES_QUEUED", items });
-  }, [dispatch]);
-
-  const removeUpload = useCallback((id: string) => dispatch({ type: "UPLOAD_ITEM_REMOVED", id }), [dispatch]);
-
   return {
     runSearch, runRefine, removeClue, toggleSelect, openDrawer, closeDrawer,
     newConversation, selectConversation,
     summarize, makeRoadmap, summarizeImage, roadmapImage,
     proposeSchedule, confirmSchedule, cancelSchedule,
-    queueFiles, removeUpload,
   };
 }

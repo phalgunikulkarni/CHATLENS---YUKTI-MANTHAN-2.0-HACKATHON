@@ -11,15 +11,14 @@ const EXAMPLES = [
 
 interface Props {
   onSearch: (q: string) => void;
-  onUpload: () => void;
 }
 
 /**
- * Focused home hero: concise heading, the search bar as centerpiece, an Upload
- * button, and example query chips (suggestions only). Clicking a chip fills the
- * search bar - it does NOT search or record history until the user acts.
+ * Focused home hero: concise heading, the search bar as centerpiece, and
+ * example query chips (suggestions only). Clicking a chip fills the search bar
+ * - it does NOT search or record history until the user acts.
  */
-export function SearchHero({ onSearch, onUpload }: Props) {
+export function SearchHero({ onSearch }: Props) {
   const [q, setQ] = useState("");
   const submit = (value: string) => {
     if (!isSendable(value)) return;
@@ -43,9 +42,6 @@ export function SearchHero({ onSearch, onUpload }: Props) {
         />
         <button className="btn btn-primary" onClick={() => submit(q)} disabled={!isSendable(q)}>
           <Icon name="search" size={16} /> Search
-        </button>
-        <button className="btn btn-ghost" onClick={onUpload}>
-          <Icon name="upload" size={16} /> Upload images
         </button>
       </div>
 

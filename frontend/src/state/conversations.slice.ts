@@ -1,3 +1,4 @@
+import type { ConversationSummary as ApiConversationSummary } from "../api/types";
 import type { ActionsState, ConversationState, ResultsState } from "./types";
 
 export interface ConversationSummary {
@@ -35,7 +36,14 @@ export function makeTitle(query: string): string {
 export type ConversationsAction =
   | { type: "CONVERSATION_NEW"; id: string; createdAt: number }
   | { type: "CONVERSATION_SELECTED"; id: string }
-  | { type: "CONVERSATION_TITLED"; id: string; title: string };
+  | { type: "CONVERSATION_TITLED"; id: string; title: string }
+  | {
+      // Populate the conversation list from backend-durable summaries on
+      // login/account-ready. The backend id (canonical sessionId) becomes the
+      // summary id so selection/hydration target the same conversation.
+      type: "CONVERSATIONS_LOADED";
+      summaries: ApiConversationSummary[];
+    };
 
 /**
  * The real switch/swap logic lives in the root reducer because changing the

@@ -1,8 +1,11 @@
 import type {
+  AccessGrantResult,
+  AccessStatus,
+  ConversationDetail,
+  ConversationSummary,
   ExplanationSignal,
   ImageQaRequest,
   ImageQaResponse,
-  ImageStatus,
   RefineRequest,
   RoadmapRequest,
   RoadmapResponse,
@@ -10,6 +13,7 @@ import type {
   ScheduleProposal,
   ScheduleProposeRequest,
   SearchRequest,
+  SearchResult,
   SummarizeRequest,
   SummaryResponse,
   TurnResponse,
@@ -30,6 +34,21 @@ export interface ApiService {
   roadmap(req: RoadmapRequest): Promise<RoadmapResponse>;
   proposeSchedule(req: ScheduleProposeRequest): Promise<ScheduleProposal>;
   confirmSchedule(req: ScheduleConfirmRequest): Promise<{ confirmed: boolean }>;
-  uploadImage(file: File): Promise<ImageStatus>;
-  getImageStatus(imageId: string): Promise<ImageStatus>;
+  // ---- Account-scoped, backend-durable chat persistence ----
+  /** Create a durable conversation; returns the canonical backend session id + summary. */
+  createChat(title?: string): Promise<ConversationSummary>;
+  /** List the signed-in account's durable conversations (account-scoped). */
+  listChats(): Promise<ConversationSummary[]>;
+  /** Fetch a single conversation's messages + result refs + context. */
+  getChat(sessionId: string): Promise<ConversationDetail>;
+  /** Delete an owned conversation. */
+  deleteChat(sessionId: string): Promise<void>;
+  /** Rename/title an owned conversation; returns the updated summary. */
+  renameChat(sessionId: string, title: string): Promise<ConversationSummary>;
+  /** Read-only list of the user's canonical indexed memories (ML/Chroma). */
+  listLibrary(): Promise<SearchResult[]>;
+  /** Open the native local folder picker (server-side) and start indexing. */
+  grantAccess(): Promise<AccessGrantResult>;
+  /** Poll authorization + indexing status. */
+  getAccessStatus(): Promise<AccessStatus>;
 }
