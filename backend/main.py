@@ -7,7 +7,7 @@ from schemas import (
     ExplanationResponse, SummarizeRequest, SummarizeResponse,
     RoadmapRequest, RoadmapResponse, ImageResponse
 )
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import ingestion
 
@@ -94,12 +94,79 @@ def search(request: SearchRequest, db: Session = Depends(get_db)):
     )
 
 @app.post("/search-sessions/{session_id}/messages", response_model=SearchResponse)
-def refine_search(session_id: str, request: MessageRequest):
-    # Stub response
+def refine_search(session_id: str, request: MessageRequest, db: Session = Depends(get_db)):
+    from agent.context_manager import update_search_context
+    from retrieval.engine import hybrid_search
+    from schemas import SearchResult
+    
+    # 1. Verify session exists
+    db_session = db.query(models.SearchSession).filter(models.SearchSession.id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Search session not found")
+        
+    # 2. Save user message
+    now = datetime.now(timezone.utc)
+    new_msg = models.SearchMessage(
+        id=str(uuid.uuid4()),
+        session_id=session_id,
+        role="user",
+        content=request.message,
+        created_at=now
+    )
+    db.add(new_msg)
+    
+    # 3. Fetch current SearchContext
+    db_context = db.query(models.SearchContext).filter(models.SearchContext.session_id == session_id).first()
+    if not db_context:
+        # Fallback if somehow context is missing
+        db_context = models.SearchContext(
+            session_id=session_id, 
+            original_intent=request.message, 
+            updated_query=request.message
+        )
+        db.add(db_context)
+        
+    # 4. Call LLM to update context
+    llm_result = update_search_context(db_context, request.message)
+    
+    # 5. Update SQLite record
+    db_context.topic_clues = llm_result.get("topic_clues", db_context.topic_clues)
+    db_context.visual_clues = llm_result.get("visual_clues", db_context.visual_clues)
+    db_context.content_clues = llm_result.get("content_clues", db_context.content_clues)
+    db_context.updated_query = llm_result.get("updated_query", db_context.updated_query)
+    
+    db_session.updated_at = now
+    db_session.active_query = db_context.updated_query
+    db.commit()
+    
+    # 6. Trigger Hybrid Retrieval
+    raw_results = hybrid_search(db, db_context.updated_query, limit=10)
+    
+    # 7. Format response
+    results = []
+    for r in raw_results:
+        img = db.query(models.Image).filter(models.Image.id == r["image_id"]).first()
+        url = f"/images/{r['image_id']}/file" if img else ""
+        
+        matched_signals = []
+        if r["signals"]["visual_score"] > 0:
+            matched_signals.append(f"Visual Score: {r['signals']['visual_score']:.2f}")
+        if r["signals"]["text_score"] > 0:
+            matched_signals.append(f"Text Score: {r['signals']['text_score']:.2f}")
+            if r["signals"]["ocr_matches"]:
+                matched_signals.append(f"OCR Matched: {r['signals']['ocr_matches'][0]}")
+                
+        results.append(SearchResult(
+            image_id=r["image_id"],
+            score=r["final_score"],
+            thumbnail_or_image_url=url,
+            matched_signals=matched_signals
+        ))
+        
     return SearchResponse(
         session_id=session_id,
-        effective_query="updated mock query based on refinement",
-        results=[]
+        effective_query=db_context.updated_query,
+        results=results
     )
 
 @app.get("/search-results/{result_id}/explanation", response_model=ExplanationResponse)

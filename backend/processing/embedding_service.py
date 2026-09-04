@@ -13,7 +13,11 @@ class EmbeddingService:
         image = PILImage.open(image_path).convert("RGB")
         inputs = self.processor(images=image, return_tensors="pt")
         with torch.no_grad():
-            image_features = self.model.get_image_features(**inputs)
+            outputs = self.model.get_image_features(**inputs)
+            if hasattr(outputs, "pooler_output"):
+                image_features = self.model.visual_projection(outputs.pooler_output)
+            else:
+                image_features = outputs
         
         # We return the vector list
         vector = image_features.squeeze().tolist()
@@ -23,7 +27,11 @@ class EmbeddingService:
     def process_text_embedding(self, text: str) -> list[float]:
         inputs = self.processor(text=[text], return_tensors="pt", padding=True)
         with torch.no_grad():
-            text_features = self.model.get_text_features(**inputs)
+            outputs = self.model.get_text_features(**inputs)
+            if hasattr(outputs, "pooler_output"):
+                text_features = self.model.text_projection(outputs.pooler_output)
+            else:
+                text_features = outputs
         text_features = text_features / text_features.norm(p=2, dim=-1, keepdim=True)
         return text_features.squeeze().tolist()
 
