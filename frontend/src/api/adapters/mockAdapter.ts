@@ -18,6 +18,10 @@ import type {
   SearchResult,
   SummarizeRequest,
   RelatedMemoriesRequest,
+  ResearchRequest,
+  ResearchResponse,
+  AnalyzeBillRequest,
+  AnalyzeBillResponse,
   SummaryResponse,
   TurnResponse,
 } from "../types";
@@ -234,6 +238,64 @@ export class MockAdapter implements ApiService {
     await this.simulate();
     // Mock: return a couple of pre-baked results, excluding the selected image.
     return pick(["cn-osi-hand"]).filter((r) => r.id !== req.imageId);
+  }
+  async research(req: ResearchRequest): Promise<ResearchResponse> {
+    await this.simulate();
+    return {
+      ok: true, query: req.query,
+      research_answer: "Based on the collected abstracts, the topic is well-studied [1][2]. (mock)",
+      key_findings: ["Key finding one (mock).", "Key finding two (mock)."],
+      sources: [
+        { title: "A representative paper", url: "https://doi.org/10.0000/mock1", provider: "OpenAlex",
+          source_type: "scholarly", authors: ["A. Author", "B. Writer"], publication_date: "2022-05-01",
+          year: 2022, doi: "10.0000/mock1", identifier: "W-mock1", abstract: "Abstract snippet (mock).",
+          snippet: null, relevance_score: 0.9 },
+        { title: "A preprint", url: "http://arxiv.org/abs/2201.00001", provider: "arXiv",
+          source_type: "preprint", authors: ["C. Researcher"], publication_date: "2022-01-01",
+          year: 2022, doi: null, identifier: "arxiv:2201.00001", abstract: "Preprint summary (mock).",
+          snippet: null, relevance_score: 0.8 },
+      ],
+      limitations: [], providers_used: ["openalex", "arxiv"], providers_failed: [],
+    };
+  }
+  async analyzeBill(req: AnalyzeBillRequest): Promise<AnalyzeBillResponse> {
+    await this.simulate();
+    const fields = {
+      merchant: "Green Leaf Grocery", date: "2024-03-15", total: 8.30,
+      currency: "USD", tax: 0.61,
+      line_items: [
+        { name: "Apples", price: 3.50 },
+        { name: "Milk", price: 2.99 },
+        { name: "Bread", price: 1.20 },
+      ],
+    };
+    if (req.operation === "split") {
+      if ((req.splitMode ?? "equal") === "equal") {
+        const n = Math.max(1, req.people ?? 2);
+        const base = Math.round((fields.total / n) * 100) / 100;
+        const shares = Array.from({ length: n }, (_, i) => ({
+          person: `Person ${i + 1}`, amount: base,
+        }));
+        return {
+          ok: true, message: `Bill split equally among ${n} (mock).`, fields,
+          confidence: 1.0, notes: [],
+          split: { mode: "equal", currency: fields.currency, total: fields.total,
+                   people_count: n, shares, rounding: { rule: "mock", sum: fields.total, reconciles_to_total: true } },
+        };
+      }
+      const people = Object.entries(req.assignments ?? {}).map(([person, idxs]) => {
+        const sub = (idxs as number[]).reduce((a, i) => a + (fields.line_items[i]?.price ?? 0), 0);
+        return { person, items_subtotal: Math.round(sub * 100) / 100, amount: Math.round(sub * 100) / 100 };
+      });
+      return {
+        ok: true, message: "Bill split by items (mock).", fields, confidence: 1.0, notes: [],
+        split: { mode: "items", currency: fields.currency, total: fields.total,
+                 tax: fields.tax, tip: req.tip ?? null, people,
+                 shared_item_indices: req.sharedItems ?? [],
+                 rounding: { rule: "mock", reconciles_to_total: true } },
+      };
+    }
+    return { ok: true, message: "Bill analyzed (mock).", fields, confidence: 1.0, notes: [] };
   }
   async roadmap(req: RoadmapRequest): Promise<RoadmapResponse> {
     await this.simulate();

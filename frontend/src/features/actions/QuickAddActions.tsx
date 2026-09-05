@@ -36,6 +36,7 @@ export function AddToCalendarButton({ defaultTitle, defaultDate, compact }: Prop
       {open && (
         <AddEventModal
           defaultDate={defaultDate || todayISO()}
+          defaultTitle={defaultTitle}
           onCancel={() => setOpen(false)}
           onCreate={async (input) => {
             const payload = { ...input, title: input.title || defaultTitle || "" };
@@ -64,6 +65,7 @@ export function AddTaskButton({ defaultTitle, defaultDate, compact }: Props) {
       {open && (
         <AddTaskModal
           defaultDate={defaultDate}
+          defaultTitle={defaultTitle}
           onCancel={() => setOpen(false)}
           onCreate={async (input) => {
             const payload = { ...input, title: input.title || defaultTitle || "" };

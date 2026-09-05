@@ -7,6 +7,8 @@ import { formatLongDate, formatTime, localTimezone } from "./calendarUtils";
 interface Props {
   /** Pre-fill the date (e.g. the day the user clicked). */
   defaultDate: string;
+  /** Optional pre-filled title (e.g. from a selected memory / query context). */
+  defaultTitle?: string;
   onCancel: () => void;
   onCreate: (input: NewCalendarEvent) => Promise<unknown>;
 }
@@ -17,14 +19,14 @@ const REMINDER_OPTIONS = ["None", "At time of event", "10 minutes", "30 minutes"
  * Add-event flow with an explicit confirmation step. Nothing is created until
  * the user confirms on the review screen. Reuses the shared dialog styling.
  */
-export function AddEventModal({ defaultDate, onCancel, onCreate }: Props) {
+export function AddEventModal({ defaultDate, defaultTitle, onCancel, onCreate }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true, onCancel);
 
   const [step, setStep] = useState<"form" | "confirm">("form");
   const [submitting, setSubmitting] = useState(false);
 
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(defaultTitle ?? "");
   const [date, setDate] = useState(defaultDate);
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("");

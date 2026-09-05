@@ -20,6 +20,7 @@ from schemas import (
     SummaryResponseBody,
     RelatedMemoriesRequestBody,
     AnalyzeBillRequestBody,
+    ResearchRequestBody,
     RoadmapRequestBody,
     RoadmapResponseBody,
     RoadmapStep,
@@ -341,6 +342,31 @@ def analyze_bill_action(
         # Controlled agent failure -> 422 with the safe explanation, but still
         # return the structured body so the UI can show what's missing.
         raise HTTPException(status_code=422, detail=result.get("message") or "Bill analysis failed")
+    return result
+
+
+@app.post("/api/actions/research")
+def research_action(
+    request: ResearchRequestBody,
+    account: str = Depends(resolve_account),
+):
+    # P3S1: credible multi-source research via the EXISTING Research agent
+    # (scholarly providers + local Qwen synthesis). Account-scoped. Never
+    # generates an answer when the agent reports no evidence. No secrets exposed.
+    import memory_actions
+    query = (request.query or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="A research query is required.")
+    result = memory_actions.run_research(
+        account, query, max_results=request.maxResults, providers=request.providers,
+    )
+    if not result.get("ok"):
+        err = result.get("error") or ""
+        # Missing query is a 400; everything else (no_evidence / llm_error /
+        # aggregation_error / provider issues) is a controlled 422 that still
+        # carries the structured body (sources/limitations) for the UI.
+        status = 400 if err == "no_query" else 422
+        raise HTTPException(status_code=status, detail=result.get("message") or "Research failed")
     return result
 
 

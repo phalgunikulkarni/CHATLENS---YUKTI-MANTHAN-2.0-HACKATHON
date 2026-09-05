@@ -86,6 +86,12 @@ class RelatedMemoriesRequestBody(BaseModel):
     imageId: str
     query: Optional[str] = None
 
+class ResearchRequestBody(BaseModel):
+    sessionId: Optional[str] = None
+    query: str
+    maxResults: Optional[int] = None
+    providers: Optional[List[str]] = None
+
 class AnalyzeBillRequestBody(BaseModel):
     sessionId: str
     imageIds: List[str] = []

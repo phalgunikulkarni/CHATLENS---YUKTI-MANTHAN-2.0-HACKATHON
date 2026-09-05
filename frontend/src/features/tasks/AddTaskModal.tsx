@@ -6,6 +6,8 @@ import { formatLongDate, formatTime, todayISO } from "../calendar/calendarUtils"
 
 interface Props {
   defaultDate?: string;
+  /** Optional pre-filled title (e.g. from a selected memory / query context). */
+  defaultTitle?: string;
   onCancel: () => void;
   onCreate: (input: NewTaskItem) => Promise<unknown>;
 }
@@ -13,14 +15,14 @@ interface Props {
 const PRIORITIES: TaskPriority[] = ["low", "medium", "high"];
 
 /** Add-task flow with an explicit confirmation step before creation. */
-export function AddTaskModal({ defaultDate, onCancel, onCreate }: Props) {
+export function AddTaskModal({ defaultDate, defaultTitle, onCancel, onCreate }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true, onCancel);
 
   const [step, setStep] = useState<"form" | "confirm">("form");
   const [submitting, setSubmitting] = useState(false);
 
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(defaultTitle ?? "");
   const [dueDate, setDueDate] = useState(defaultDate || todayISO());
   const [dueTime, setDueTime] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("medium");

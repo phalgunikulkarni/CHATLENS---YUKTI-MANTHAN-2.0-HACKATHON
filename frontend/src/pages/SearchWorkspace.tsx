@@ -1,116 +1,93 @@
-import { useMemo, useState } from "react";
-import type { ConnectorMemorySource } from "../api/types";
+import { useMemo, useRef, useState } from "react";
 import { useActions, useConversation, useResults, useUi } from "../hooks";
 import { useChatLens } from "../hooks/useChatLens";
 import { SearchHero } from "../features/results/SearchHero";
-import { ResultsHeader } from "../features/results/ResultsHeader";
+import { ResultsToolbar, pillForResult, type CategoryValue, type SortValue } from "../features/results/ResultsToolbar";
 import { MemoryGrid } from "../features/results/MemoryGrid";
-import { SourceFilter, type SourceFilterValue } from "../features/results/SourceFilter";
+import { QuickInsights } from "../features/results/QuickInsights";
 import { ImageDetailDrawer } from "../features/results/ImageDetailDrawer";
 import { ConversationPanel } from "../features/conversation/ConversationPanel";
-import { ActionPanel } from "../features/actions/ActionPanel";
-import { SummaryPanel } from "../features/actions/SummaryPanel";
-import { RoadmapPanel } from "../features/actions/RoadmapPanel";
+import { ActionGrid, type ActionId } from "../features/actions/ActionGrid";
+import { ExecutionWorkspace, type ExecHandle } from "../features/actions/ExecutionWorkspace";
 import { ConfirmDialog } from "../features/actions/ConfirmDialog";
 import { SkeletonGrid } from "../components/SkeletonGrid";
 import { EmptyState, ErrorState, NotConnectedState } from "../components/States";
-import { Icon } from "../components/Icon";
 
 export function SearchWorkspace() {
   const results = useResults();
   const conversation = useConversation();
-  const actions = useActions();
   const ui = useUi();
+  const actions = useActions();
   const c = useChatLens();
-  const [view, setView] = useState<"grid" | "list">("grid");
-  const [source, setSource] = useState<SourceFilterValue>("all");
+  const [view] = useState<"grid" | "list">("grid");
+  const [category, setCategory] = useState<CategoryValue>("all");
+  const [sort, setSort] = useState<SortValue>("relevance");
+  const execRef = useRef<ExecHandle | null>(null);
 
-  // Sources actually present in the current results (no invented options).
-  const availableSources = useMemo(() => {
-    const set = new Set<ConnectorMemorySource>();
-    results.items.forEach((r) => { if (r.memorySource) set.add(r.memorySource); });
-    return [...set];
-  }, [results.items]);
+  const defaultTitle = useMemo(() => {
+    const first = results.items.find((r) => results.selectedIds.includes(r.id));
+    return (first?.title || results.echoedQuery || "").trim() || undefined;
+  }, [results.items, results.selectedIds, results.echoedQuery]);
 
-  const visibleItems = useMemo(
-    () => (source === "all" ? results.items : results.items.filter((r) => r.memorySource === source)),
-    [results.items, source]
-  );
+  const visibleItems = useMemo(() => {
+    let items = category === "all" ? results.items : results.items.filter((r) => pillForResult(r) === category);
+    if (sort === "recent") {
+      items = [...items].sort((a, b) => (b.capturedAt ?? "").localeCompare(a.capturedAt ?? ""));
+    }
+    return items;
+  }, [results.items, category, sort]);
 
-  // Drawer only opens for a real, currently-loaded result (no demo lookup).
   const openResult = results.items.find((r) => r.id === ui.drawerOpenForId);
+  const onAction = (id: ActionId) => execRef.current?.run(id);
 
   return (
-    <div>
+    <div className="cl-theme">
       {!results.hasSearched ? (
         <SearchHero onSearch={c.runSearch} />
       ) : (
-        <div className="workspace">
-          <div className="results-col">
-            <ResultsHeader
-              query={results.echoedQuery}
-              count={visibleItems.length}
-              clues={conversation.activeClues}
-              view={view}
-              refining={results.refining}
-              onRemoveClue={c.removeClue}
-              onToggleView={setView}
-            />
+        <div className="cl-workspace">
+          <ResultsToolbar
+            query={results.echoedQuery}
+            count={visibleItems.length}
+            results={results.items}
+            category={category}
+            sort={sort}
+            onSearch={c.runSearch}
+            onCategory={setCategory}
+            onSort={setSort}
+          />
 
-            {availableSources.length > 0 && (
-              <SourceFilter available={availableSources} value={source} onChange={setSource} />
-            )}
+          <div className="cl-results-row">
+            <div className="results-col">
+              {results.loading ? (
+                <SkeletonGrid count={6} />
+              ) : results.notConnected ? (
+                <NotConnectedState />
+              ) : results.error ? (
+                <ErrorState title="Search failed" message={results.error} onRetry={() => c.runSearch(results.echoedQuery)} />
+              ) : visibleItems.length === 0 ? (
+                <EmptyState icon="search" title="No memories matched"
+                  message="Try adding a memory clue - for example the type of image, a topic, or something you remember seeing." />
+              ) : (
+                <MemoryGrid results={visibleItems} selectedIds={results.selectedIds} view={view}
+                  onToggleSelect={c.toggleSelect} onOpen={c.openDrawer} onWhy={c.openDrawer} />
+              )}
+            </div>
 
-            {results.loading ? (
-              <SkeletonGrid count={6} />
-            ) : results.notConnected ? (
-              <NotConnectedState />
-            ) : results.error ? (
-              <ErrorState title="Search failed" message={results.error} onRetry={() => c.runSearch(results.echoedQuery)} />
-            ) : visibleItems.length === 0 ? (
-              <EmptyState
-                icon="search"
-                title="No memories matched"
-                message="Try adding a memory clue - for example the type of image, a topic, or something you remember seeing."
-              />
-            ) : (
-              <MemoryGrid
-                results={visibleItems}
-                selectedIds={results.selectedIds}
-                view={view}
-                onToggleSelect={c.toggleSelect}
-                onOpen={c.openDrawer}
-                onWhy={c.openDrawer}
-              />
-            )}
+            <aside className="cl-refine-col">
+              <ConversationPanel onSend={c.runRefine} />
+              <QuickInsights results={results.items} />
+            </aside>
           </div>
 
-          <div className="side-col">
-            <ConversationPanel onSend={c.runRefine} />
-            <ActionPanel
-              selectedCount={results.selectedIds.length}
-              loading={actions.loading}
-              onSummarize={c.summarize}
-              onRoadmap={c.makeRoadmap}
-              onExtractKeyPoints={c.extractKeyPoints}
-              onRelated={c.relatedMemories}
-            />
-            {actions.notConnected && (
-              <div className="panel"><div className="panel-body">
-                <NotConnectedState
-                  title="Actions need the backend"
-                  message="Summaries and roadmaps are generated by the ChatLens agent. Connect the backend to use them."
-                />
-              </div></div>
-            )}
-            {actions.summary && <SummaryPanel summary={actions.summary} resultItems={results.items} onRoadmap={c.makeRoadmap} />}
-            {actions.roadmap && (
-              <RoadmapPanel roadmap={actions.roadmap} onSchedule={() => c.proposeSchedule(actions.roadmap!.steps)} />
-            )}
-            <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => c.runSearch(results.echoedQuery)}>
-              <Icon name="search" size={16} /> New search
-            </button>
-          </div>
+          <ActionGrid heading="What would you like to do with these results?" onAction={onAction} />
+
+          <ExecutionWorkspace
+            selectedIds={results.selectedIds}
+            defaultTitle={defaultTitle}
+            sessionId={conversation.sessionId}
+            handleRef={execRef}
+          />
         </div>
       )}
 

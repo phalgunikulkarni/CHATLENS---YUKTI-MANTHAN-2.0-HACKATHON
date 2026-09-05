@@ -11,6 +11,10 @@ import type {
   ImageQaResponse,
   RefineRequest,
   RelatedMemoriesRequest,
+  ResearchRequest,
+  ResearchResponse,
+  AnalyzeBillRequest,
+  AnalyzeBillResponse,
   RoadmapRequest,
   RoadmapResponse,
   ScheduleConfirmRequest,
@@ -113,6 +117,61 @@ export class HttpAdapter implements ApiService {
       thumbnailUrl: this.absolutize(it.thumbnailUrl) ?? it.thumbnailUrl,
       fullUrl: this.absolutize(it.fullUrl),
     }));
+  }
+  async research(req: ResearchRequest): Promise<ResearchResponse> {
+    // The backend returns the structured AgentResult envelope; on a controlled
+    // failure (e.g. no evidence) it is a 422 whose JSON body still carries the
+    // structured detail. We normalize both into a flat ResearchResponse.
+    const res = await fetch(`${this.baseUrl}${ENDPOINTS.research}`, {
+      method: "POST",
+      headers: this.withAccount({ "Content-Type": "application/json" }),
+      body: JSON.stringify(req),
+    });
+    const body = await res.json().catch(() => null);
+    if (res.ok && body) {
+      const data = body.data ?? {};
+      const meta = body.metadata ?? {};
+      return {
+        ok: Boolean(body.ok),
+        query: data.query ?? req.query,
+        research_answer: data.research_answer ?? null,
+        key_findings: data.key_findings ?? [],
+        sources: data.sources ?? [],
+        limitations: data.limitations ?? [],
+        providers_used: meta.providers_used ?? [],
+        providers_failed: meta.providers_failed ?? [],
+      };
+    }
+    // Controlled failure: surface a safe message via limitations.
+    const detail = (body && (body.detail as string)) || `Research failed (HTTP ${res.status})`;
+    return {
+      ok: false, query: req.query, research_answer: null, key_findings: [],
+      sources: [], limitations: [detail], providers_used: [], providers_failed: [],
+    };
+  }
+  async analyzeBill(req: AnalyzeBillRequest): Promise<AnalyzeBillResponse> {
+    // Backend returns the structured AgentResult envelope; a controlled failure
+    // (e.g. no OCR text / no total) is a 422 whose JSON body still carries the
+    // structured fields/notes. Normalize both into a flat AnalyzeBillResponse.
+    const res = await fetch(`${this.baseUrl}${ENDPOINTS.analyzeBill}`, {
+      method: "POST",
+      headers: this.withAccount({ "Content-Type": "application/json" }),
+      body: JSON.stringify(req),
+    });
+    const body = await res.json().catch(() => null);
+    if (res.ok && body) {
+      const data = body.data ?? {};
+      return {
+        ok: Boolean(body.ok),
+        message: body.message ?? "",
+        fields: data.fields ?? null,
+        confidence: data.confidence ?? null,
+        notes: data.notes ?? [],
+        split: data.split ?? null,
+      };
+    }
+    const detail = (body && (body.detail as string)) || `Bill analysis failed (HTTP ${res.status})`;
+    return { ok: false, message: detail, fields: null, confidence: null, notes: [detail], split: null };
   }
   roadmap(req: RoadmapRequest) {
     return this.post<RoadmapResponse>(ENDPOINTS.roadmap, req);

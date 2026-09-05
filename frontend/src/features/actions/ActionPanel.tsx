@@ -1,4 +1,5 @@
 import { Icon } from "../../components/Icon";
+import { AddToCalendarButton, AddTaskButton } from "./QuickAddActions";
 
 interface Props {
   selectedCount: number;
@@ -7,6 +8,10 @@ interface Props {
   onRoadmap: () => void;
   onExtractKeyPoints: () => void;
   onRelated: () => void;
+  /** Prefill for the Add-to-Calendar dialog (selected memory title / query). */
+  addToCalendarTitle?: string;
+  /** Prefill for the Add-to-Task dialog (selected memory title / query). */
+  addTaskTitle?: string;
 }
 
 /** Actions on retrieved memories. Enabled once memories are selected. */
@@ -17,6 +22,8 @@ export function ActionPanel({
   onRoadmap,
   onExtractKeyPoints,
   onRelated,
+  addToCalendarTitle,
+  addTaskTitle,
 }: Props) {
   const disabled = selectedCount === 0 || loading;
   return (
@@ -44,6 +51,16 @@ export function ActionPanel({
           <button className="action-btn" onClick={onRelated} disabled={disabled}>
             <span className="action-emoji">🔗</span> Related memories
           </button>
+        </div>
+        {/* Add to Calendar / Add to Task use the shared confirmation dialogs +
+            the calendar/task agents. Placed with the other agent actions. */}
+        <div className="action-secondary">
+          <div data-testid="add-to-calendar-action" style={{ flex: 1 }}>
+            <AddToCalendarButton defaultTitle={addToCalendarTitle} compact />
+          </div>
+          <div data-testid="add-to-task-action" style={{ flex: 1 }}>
+            <AddTaskButton defaultTitle={addTaskTitle} compact />
+          </div>
         </div>
       </div>
     </div>

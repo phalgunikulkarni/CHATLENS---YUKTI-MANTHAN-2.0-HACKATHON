@@ -31,7 +31,7 @@ export function ConversationPanel({ onSend }: Props) {
     <div className="panel conversation">
       <div className="panel-head">
         <Icon name="brain" size={18} style={{ color: "var(--accent)" }} />
-        <h3>Refine conversationally</h3>
+        <h3>Refine with ChatLens</h3>
       </div>
 
       <div className="messages" role="log" aria-live="polite" aria-label="Conversation" ref={listRef}>

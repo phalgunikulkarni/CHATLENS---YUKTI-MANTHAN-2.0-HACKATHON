@@ -18,6 +18,10 @@ export const ENDPOINTS = {
   summarize: "/api/actions/summarize",
   /** POST - related memories for a selected image (reuses existing retrieval). */
   related: "/api/actions/related",
+  /** POST - credible multi-source research (scholarly providers + local Qwen). */
+  research: "/api/actions/research",
+  /** POST - Finance/Receipt analysis of a selected memory (existing OCR). */
+  analyzeBill: "/api/actions/analyze_bill",
   /** POST - turn memories into an ordered plan. */
   roadmap: "/api/actions/roadmap",
   /** POST - preview proposed calendar events. */

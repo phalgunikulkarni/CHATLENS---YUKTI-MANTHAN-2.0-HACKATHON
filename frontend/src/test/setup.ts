@@ -82,3 +82,13 @@ function ensureStorage(name: "localStorage" | "sessionStorage"): void {
 
 ensureStorage("localStorage");
 ensureStorage("sessionStorage");
+
+/**
+ * jsdom does not implement Element.prototype.scrollIntoView. Components that
+ * auto-scroll (e.g. the append-only execution workspace) call it in an effect,
+ * which would throw in tests. Install a no-op ONLY when missing. Test harness
+ * only — application/production behavior is unchanged.
+ */
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function scrollIntoView() { /* no-op in jsdom */ };
+}

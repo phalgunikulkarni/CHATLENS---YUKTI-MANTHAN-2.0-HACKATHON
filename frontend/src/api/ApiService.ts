@@ -8,6 +8,10 @@ import type {
   ImageQaResponse,
   RefineRequest,
   RelatedMemoriesRequest,
+  ResearchRequest,
+  ResearchResponse,
+  AnalyzeBillRequest,
+  AnalyzeBillResponse,
   RoadmapRequest,
   RoadmapResponse,
   ScheduleConfirmRequest,
@@ -34,6 +38,10 @@ export interface ApiService {
   summarize(req: SummarizeRequest): Promise<SummaryResponse>;
   /** Related memories for a selected image (existing retrieval; no new agent). */
   relatedMemories(req: RelatedMemoriesRequest): Promise<SearchResult[]>;
+  /** Credible multi-source research (scholarly providers + local Qwen synthesis). */
+  research(req: ResearchRequest): Promise<ResearchResponse>;
+  /** Finance/Receipt analysis of a selected memory using existing OCR context. */
+  analyzeBill(req: AnalyzeBillRequest): Promise<AnalyzeBillResponse>;
   roadmap(req: RoadmapRequest): Promise<RoadmapResponse>;
   proposeSchedule(req: ScheduleProposeRequest): Promise<ScheduleProposal>;
   confirmSchedule(req: ScheduleConfirmRequest): Promise<{ confirmed: boolean }>;

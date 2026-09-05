@@ -158,3 +158,23 @@ def run_analyze_bill(account_id: str, image_ids: List[str],
         params.setdefault("image_id", image_ids[0])
     agent_ctx = AgentContext(account_id=account_id, params=params)
     return _ORCH.dispatch(agent_ctx, agent_id="analyze_bill").to_dict()
+
+
+def run_research(account_id: str, query: str, max_results: Optional[int] = None,
+                 providers: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Run the existing Research agent for a natural-language query.
+
+    Invokes the SAME research agent through the shared orchestrator (no new
+    agent, no duplicated research logic). Passes the query + optional bounds; the
+    agent owns provider selection, dedup, ranking, and grounded Qwen synthesis.
+
+    Returns the AgentResult dict (ok, agent, message, data{research_answer,
+    key_findings, sources, limitations}, evidence, metadata).
+    """
+    params: Dict[str, Any] = {"query": (query or "").strip()}
+    if max_results is not None:
+        params["max_results"] = max_results
+    if providers:
+        params["providers"] = providers
+    agent_ctx = AgentContext(account_id=account_id, query=params["query"], params=params)
+    return _ORCH.dispatch(agent_ctx, agent_id="research").to_dict()

@@ -177,6 +177,115 @@ export interface RelatedMemoriesRequest {
   query?: string;
 }
 
+export interface ResearchRequest {
+  sessionId?: string;
+  query: string;
+  maxResults?: number;
+  providers?: string[];
+}
+
+export interface ResearchSource {
+  title: string | null;
+  url: string | null;
+  provider: string | null;
+  source_type: string | null;
+  authors: string[];
+  publication_date: string | null;
+  year: number | null;
+  doi: string | null;
+  identifier: string | null;
+  abstract: string | null;
+  snippet: string | null;
+  relevance_score: number | null;
+}
+
+export interface ResearchResponse {
+  ok: boolean;
+  query: string;
+  research_answer: string | null;
+  key_findings: string[];
+  sources: ResearchSource[];
+  limitations: string[];
+  providers_used: string[];
+  providers_failed: string[];
+}
+
+export interface BillLineItem {
+  name: string;
+  price: number;
+}
+
+export interface BillFields {
+  merchant: string | null;
+  date: string | null;
+  total: number | null;
+  currency: string | null;
+  tax: number | null;
+  line_items: BillLineItem[];
+}
+
+export interface AnalyzeBillRequest {
+  sessionId?: string;
+  imageIds: string[];
+  /** Optional raw OCR text; normally the backend reuses stored OCR by imageId. */
+  ocrText?: string;
+  /** "analyze" (default) or "split". */
+  operation?: "analyze" | "split";
+  /** "equal" (default) or "items" when operation === "split". */
+  splitMode?: "equal" | "items";
+  /** Equal split: number of people. */
+  people?: number;
+  /** Item split: { personName: [itemIndex, ...] }. */
+  assignments?: Record<string, number[]>;
+  /** Item split: item indices shared equally among all named people. */
+  sharedItems?: number[];
+  /** Optional tip amount (backend allocates it; frontend never does). */
+  tip?: number;
+}
+
+export interface BillRounding {
+  rule: string;
+  sum?: number;
+  reconciles_to_total?: boolean;
+  residual_applied_to_last?: number;
+}
+
+export interface EqualShare {
+  person: string;
+  amount: number;
+}
+
+export interface ItemShare {
+  person: string;
+  items_subtotal: number;
+  amount: number;
+}
+
+export interface BillSplit {
+  mode: "equal" | "items";
+  currency: string | null;
+  total: number | null;
+  /** equal mode */
+  people_count?: number;
+  shares?: EqualShare[];
+  /** items mode */
+  tax?: number | null;
+  tip?: number | null;
+  people?: ItemShare[];
+  shared_item_indices?: number[];
+  rounding: BillRounding;
+}
+
+export interface AnalyzeBillResponse {
+  ok: boolean;
+  message: string;
+  fields: BillFields | null;
+  confidence: number | null;
+  notes: string[];
+  /** Present only for a successful split operation. */
+  split?: BillSplit | null;
+}
+
 export interface SummarizeRequest {
   sessionId: string;
   imageIds: string[];

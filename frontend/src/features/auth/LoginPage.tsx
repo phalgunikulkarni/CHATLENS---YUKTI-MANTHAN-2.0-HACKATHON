@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "./useAuth";
-import { AuthLayout } from "./AuthLayout";
+import { LoginLayout } from "./LoginLayout";
 import { AuthField, PasswordField } from "./AuthFields";
 import { Icon } from "../../components/Icon";
 
@@ -21,7 +21,7 @@ export function LoginPage({ onGoToSignup }: { onGoToSignup: () => void }) {
   };
 
   return (
-    <AuthLayout>
+    <LoginLayout>
       <h1 className="auth-title">Welcome back</h1>
       <p className="auth-subtitle">Sign in to your visual memory</p>
 
@@ -78,6 +78,6 @@ export function LoginPage({ onGoToSignup }: { onGoToSignup: () => void }) {
         Don&apos;t have an account?{" "}
         <button type="button" className="auth-link" onClick={onGoToSignup}>Create account</button>
       </p>
-    </AuthLayout>
+    </LoginLayout>
   );
 }
