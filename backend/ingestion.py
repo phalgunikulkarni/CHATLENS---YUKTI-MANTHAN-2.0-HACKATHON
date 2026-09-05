@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import UploadFile, HTTPException
 from sqlalchemy.orm import Session
 from PIL import Image as PILImage
-import backend.models as models
+import models
 
 STORAGE_DIR = os.path.join(os.path.dirname(__file__), "storage", "images")
 os.makedirs(STORAGE_DIR, exist_ok=True)

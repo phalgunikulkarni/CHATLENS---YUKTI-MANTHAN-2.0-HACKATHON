@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-import backend.models as models
+import models
 
 # Keys that must never be persisted in a Result_Reference's display metadata.
 _FORBIDDEN_META_KEYS = {
