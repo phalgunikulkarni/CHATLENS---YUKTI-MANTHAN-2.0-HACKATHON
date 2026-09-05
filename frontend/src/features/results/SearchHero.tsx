@@ -2,21 +2,13 @@ import { useState } from "react";
 import { isSendable } from "../../utils/validation";
 import { Icon } from "../../components/Icon";
 
-const EXAMPLES = [
-  "Find the Python error screenshot I received on WhatsApp",
-  "Find the DBMS notes I saved in Google Drive",
-  "Find the receipt photo from Telegram",
-  "Find my handwritten OSI notes",
-];
-
 interface Props {
   onSearch: (q: string) => void;
 }
 
 /**
- * Focused home hero: concise heading, the search bar as centerpiece, and
- * example query chips (suggestions only). Clicking a chip fills the search bar
- * - it does NOT search or record history until the user acts.
+ * Focused home hero: concise heading with the natural-language search bar as the
+ * centerpiece.
  */
 export function SearchHero({ onSearch }: Props) {
   const [q, setQ] = useState("");
@@ -43,20 +35,6 @@ export function SearchHero({ onSearch }: Props) {
         <button className="btn btn-primary" onClick={() => submit(q)} disabled={!isSendable(q)}>
           <Icon name="search" size={16} /> Search
         </button>
-      </div>
-
-      <div className="try-label">Try asking</div>
-      <div className="chips">
-        {EXAMPLES.map((ex) => (
-          <button
-            className="chip"
-            key={ex}
-            onClick={() => setQ(ex)}
-            aria-label={`Use example query: ${ex}`}
-          >
-            {ex}
-          </button>
-        ))}
       </div>
     </section>
   );
