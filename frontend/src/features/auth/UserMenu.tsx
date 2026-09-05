@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useAuth } from "./useAuth";
 import { Icon } from "../../components/Icon";
 import { LogoutConfirm } from "./LogoutConfirm";
@@ -13,7 +13,30 @@ export function UserMenu() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  // Hard guard against overlapping logout calls (rapid double-clicks, or a
+  // click while a prior logout is still resolving). A ref is synchronous, so it
+  // blocks re-entry before React can re-render the disabled button.
+  const inFlight = useRef(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const handleLogout = useCallback(async () => {
+    if (inFlight.current) return; // ignore duplicate/rapid confirms
+    inFlight.current = true;
+    setLoggingOut(true);
+    try {
+      // Always await; logout() is idempotent (clears storage + account id +
+      // auth state). On success `user` becomes null and this menu unmounts.
+      await logout();
+    } finally {
+      // If the component is still mounted (e.g. logout somehow left us
+      // authenticated), release the guard and close the dialog so the user is
+      // never stuck. On the normal path the component has already unmounted.
+      inFlight.current = false;
+      setLoggingOut(false);
+      setConfirming(false);
+    }
+  }, [logout]);
 
   if (!user) return null;
 
@@ -48,8 +71,9 @@ export function UserMenu() {
 
       {confirming && (
         <LogoutConfirm
-          onCancel={() => setConfirming(false)}
-          onConfirm={async () => { setConfirming(false); await logout(); }}
+          busy={loggingOut}
+          onCancel={() => { if (!loggingOut) setConfirming(false); }}
+          onConfirm={handleLogout}
         />
       )}
     </div>

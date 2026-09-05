@@ -2,11 +2,30 @@ import { useRef } from "react";
 import { useFocusTrap } from "../../hooks";
 import { Icon } from "../../components/Icon";
 
-export function LogoutConfirm({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+/**
+ * Logout confirmation dialog. `busy` reflects an in-flight logout: while true the
+ * controls are disabled so rapid/duplicate clicks cannot fire multiple logout
+ * calls (which previously raced and left auth state inconsistent). onConfirm is
+ * invoked at most once per confirmation because the button is disabled the
+ * instant logout starts.
+ */
+export function LogoutConfirm({
+  onConfirm,
+  onCancel,
+  busy = false,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+  busy?: boolean;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  useFocusTrap(ref, true, onCancel);
+  // While logging out, ignore the escape/outside-close so the flow completes.
+  useFocusTrap(ref, true, busy ? undefined : onCancel);
   return (
-    <div className="dialog-wrap" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+    <div
+      className="dialog-wrap"
+      onMouseDown={(e) => { if (!busy && e.target === e.currentTarget) onCancel(); }}
+    >
       <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="logout-title" ref={ref} style={{ maxWidth: 420 }}>
         <div className="dialog-head">
           <div className="section-title" id="logout-title" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 8 }}>
@@ -17,8 +36,10 @@ export function LogoutConfirm({ onConfirm, onCancel }: { onConfirm: () => void; 
           </p>
         </div>
         <div className="dialog-foot">
-          <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" onClick={onConfirm}>Log out</button>
+          <button className="btn btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button className="btn btn-primary" onClick={onConfirm} disabled={busy} aria-busy={busy}>
+            {busy ? (<><Icon name="sparkles" size={15} className="spin" /> Logging out...</>) : "Log out"}
+          </button>
         </div>
       </div>
     </div>

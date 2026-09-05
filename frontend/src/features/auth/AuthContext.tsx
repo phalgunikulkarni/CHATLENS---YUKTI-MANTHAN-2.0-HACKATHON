@@ -69,13 +69,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await authService.logout();
-    // Clear the request-layer account id so no header is sent afterward. The
-    // in-memory store reset (conversation/results/actions) is driven by the
-    // AccountResetBridge effect that observes user.id -> null within the
-    // StoreProvider subtree (see AccountResetBridge).
-    clearAccountId();
-    setState({ status: "unauthenticated", user: null, token: null, error: null });
+    // Logout is deterministic: the client session is always cleared even if the
+    // (dev) auth service call rejects, so the app can never remain authenticated
+    // after the user asks to log out.
+    try {
+      await authService.logout();
+    } finally {
+      clearAccountId();
+      setState({ status: "unauthenticated", user: null, token: null, error: null });
+    }
   }, []);
 
   const clearError = useCallback(() => {
