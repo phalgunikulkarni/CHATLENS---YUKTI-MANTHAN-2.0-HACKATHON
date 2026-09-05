@@ -12,6 +12,12 @@ OCR text source priority (first that yields text wins):
 
 Never hallucinates: undetected fields are returned as null with a note. Raw OCR
 text is preserved as evidence. Never raises to the orchestrator.
+
+Also supports a bill-splitting operation (params["operation"]="split") on the
+SAME agent (no new agent): equal split (params["people"]) or item-based split
+(params["assignments"], optional params["shared_items"]/["tip"]). Splits reuse
+the detected total/tax/items; missing/invalid data -> controlled failure; no
+values are invented. Amounts reconcile to the detected total when known.
 """
 from __future__ import annotations
 
@@ -34,6 +40,10 @@ _CURRENCY_SYMBOLS = {
 _AMOUNT = r"(\d{1,3}(?:[,\d]{0,12})(?:\.\d{1,2})?)"
 _TOTAL_LINE = re.compile(
     r"(?im)^\s*(grand\s*total|total\s*amount|amount\s*due|balance\s*due|total)\b[^0-9]*"
+    + _AMOUNT,
+)
+_TAX_LINE = re.compile(
+    r"(?im)^\s*(gst|vat|tax|service\s*charge|service\s*tax)\b[^0-9]*"
     + _AMOUNT,
 )
 _CURRENCY_TOKEN = re.compile(
@@ -78,6 +88,19 @@ def _detect_total(text: str) -> Tuple[Optional[float], Optional[str]]:
     return _num(m.group(2)), m.group(0).strip()
 
 
+def _detect_tax(text: str) -> Tuple[Optional[float], Optional[str]]:
+    """Return (tax, evidence_line) from a reliably-labeled tax/GST/VAT/service line.
+
+    Conservative: only a clearly tax-labeled line counts. Never inferred from
+    the total. Returns (None, None) when no such line exists.
+    """
+    matches = list(_TAX_LINE.finditer(text or ""))
+    if not matches:
+        return None, None
+    m = matches[-1]
+    return _num(m.group(2)), m.group(0).strip()
+
+
 def _detect_date(text: str) -> Optional[str]:
     for pat in _DATE_PATTERNS:
         m = pat.search(text or "")
@@ -109,6 +132,77 @@ def _detect_line_items(text: str) -> List[Dict[str, Any]]:
             continue
         items.append({"name": name, "price": price})
     return items
+
+
+def _round2(x: float) -> float:
+    return round(x + 1e-9, 2)
+
+
+def _reconcile(amounts: List[float], target: Optional[float]) -> Tuple[List[float], Dict[str, Any]]:
+    """Round amounts to 2dp; push any residual (vs target) onto the last share so
+    the allocation reconciles to the detected total when a total is known.
+
+    Returns (adjusted_amounts, rounding_info). Rounding rule: round half up to
+    2 decimals; the final person absorbs the leftover cents.
+    """
+    rounded = [_round2(a) for a in amounts]
+    info: Dict[str, Any] = {"rule": "round half to 2 decimals; last share absorbs residual"}
+    if target is not None and rounded:
+        residual = _round2(target - sum(rounded))
+        if abs(residual) >= 0.01:
+            rounded[-1] = _round2(rounded[-1] + residual)
+            info["residual_applied_to_last"] = residual
+    info["sum"] = _round2(sum(rounded))
+    info["reconciles_to_total"] = (target is None) or abs(info["sum"] - target) < 0.01
+    return rounded, info
+
+
+def _equal_split(total: float, n: int) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    base = total / n
+    shares = [base] * n
+    adjusted, rounding = _reconcile(shares, total)
+    people = [{"person": f"Person {i+1}", "amount": adjusted[i]} for i in range(n)]
+    return people, rounding
+
+
+def _item_split(items: List[Dict[str, Any]], assignments: Dict[str, List[int]],
+                shared: List[int], tax: Optional[float], tip: Optional[float],
+                total: Optional[float]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Allocate items by index to named people; `shared` items split equally
+    across ALL named people. Tax/tip (if given) allocated proportionally to each
+    person's item subtotal. Never invents prices/tax/tip.
+    """
+    names = list(assignments.keys())
+    n = len(names)
+    subtotals = {name: 0.0 for name in names}
+
+    # assigned items
+    for name, idxs in assignments.items():
+        for i in idxs:
+            subtotals[name] += float(items[i]["price"])
+    # shared items split equally
+    for i in shared:
+        share = float(items[i]["price"]) / n
+        for name in names:
+            subtotals[name] += share
+
+    items_subtotal = sum(subtotals.values())
+    # proportional allocation of tax + tip over item subtotals (only if provided)
+    extra = (tax or 0.0) + (tip or 0.0)
+    per_person: List[float] = []
+    for name in names:
+        prop = (subtotals[name] / items_subtotal) if items_subtotal > 0 else (1.0 / n)
+        per_person.append(subtotals[name] + extra * prop)
+
+    # reconcile to total when known, else to items_subtotal + extra
+    target = total if total is not None else _round2(items_subtotal + extra)
+    adjusted, rounding = _reconcile(per_person, target)
+    people = [{
+        "person": names[i],
+        "items_subtotal": _round2(subtotals[names[i]]),
+        "amount": adjusted[i],
+    } for i in range(n)]
+    return people, rounding
 
 
 class AnalyzeBillAgent(Agent):
@@ -173,6 +267,7 @@ class AnalyzeBillAgent(Agent):
             )
 
         total, total_evidence = _detect_total(ocr_text)
+        tax, tax_evidence = _detect_tax(ocr_text)
         currency = _detect_currency(ocr_text)
         date = _detect_date(ocr_text)
         merchant = _detect_merchant(ocr_text)
@@ -194,11 +289,14 @@ class AnalyzeBillAgent(Agent):
         core = [merchant, date, total, currency]
         confidence = round(sum(1 for f in core if f is not None) / len(core), 2)
 
+        # `tax` is additive: existing fields are preserved unchanged; tax is only
+        # populated when a clearly-labeled tax/GST/VAT/service line is present.
         fields = {
             "merchant": merchant,
             "date": date,
             "total": total,
             "currency": currency,
+            "tax": tax,
             "line_items": line_items,
         }
         evidence = [{
@@ -207,7 +305,13 @@ class AnalyzeBillAgent(Agent):
             "image_id": params.get("image_id"),
             "text": ocr_text,
             "total_line": total_evidence,
+            "tax_line": tax_evidence,
         }]
+
+        # -- bill-splitting operation (opt-in; default is plain analysis) ------
+        operation = (params.get("operation") or "analyze").strip().lower()
+        if operation == "split":
+            return self._split(params, fields, evidence, source)
 
         return AgentResult.success(
             self.id,
@@ -215,4 +319,117 @@ class AnalyzeBillAgent(Agent):
             data={"fields": fields, "confidence": confidence, "notes": notes},
             evidence=evidence,
             metadata={"source": source, "extractor": "rule_based_v1"},
+        )
+
+    # -- bill splitting -------------------------------------------------------
+
+    def _split(self, params: Dict[str, Any], fields: Dict[str, Any],
+               evidence: List[Dict[str, Any]], source: str) -> AgentResult:
+        """Split the analyzed bill. Mode via params["split_mode"]:
+          - "equal" (default): total / people
+          - "items": allocate detected line items to named people (+ shared)
+
+        Never invents total/tax/tip/prices. Missing data -> controlled failure
+        that explains what is missing. Amounts reconcile to the detected total
+        when a total is known; the rounding rule is documented in the result.
+        """
+        split_mode = (params.get("split_mode") or "equal").strip().lower()
+        total = fields.get("total")
+        tax = fields.get("tax")
+        items = fields.get("line_items") or []
+        # tip is only used if explicitly supplied and numeric (never inferred).
+        tip = params.get("tip")
+        tip = float(tip) if isinstance(tip, (int, float)) else None
+
+        meta = {"source": source, "extractor": "rule_based_v1",
+                "operation": "split", "split_mode": split_mode}
+
+        if split_mode == "equal":
+            people = params.get("people")
+            try:
+                n = int(people)
+            except (TypeError, ValueError):
+                return AgentResult.failure(
+                    self.id, error="invalid_people",
+                    message="Provide params.people as a positive integer for an equal split.",
+                    data={"fields": fields, "split": None}, metadata=meta, evidence=evidence,
+                )
+            if n < 1:
+                return AgentResult.failure(
+                    self.id, error="invalid_people",
+                    message="Number of people must be at least 1.",
+                    data={"fields": fields, "split": None}, metadata=meta, evidence=evidence,
+                )
+            if total is None:
+                return AgentResult.failure(
+                    self.id, error="missing_total",
+                    message="No bill total was confidently detected, so an equal split "
+                            "cannot be computed. (No total was invented.)",
+                    data={"fields": fields, "split": None}, metadata=meta, evidence=evidence,
+                )
+            shares, rounding = _equal_split(float(total), n)
+            return AgentResult.success(
+                self.id, message=f"Bill split equally among {n}.",
+                data={"fields": fields, "split": {
+                    "mode": "equal", "people_count": n, "currency": fields.get("currency"),
+                    "total": total, "shares": shares, "rounding": rounding,
+                }},
+                evidence=evidence, metadata=meta,
+            )
+
+        if split_mode == "items":
+            assignments = params.get("assignments")
+            if not isinstance(assignments, dict) or not assignments:
+                return AgentResult.failure(
+                    self.id, error="missing_assignments",
+                    message="Provide params.assignments as {person: [item_index, ...]} "
+                            "for an item-based split.",
+                    data={"fields": fields, "split": None}, metadata=meta, evidence=evidence,
+                )
+            if not items:
+                return AgentResult.failure(
+                    self.id, error="missing_items",
+                    message="No line items with prices were confidently extracted, so an "
+                            "item-based split is not possible. (No prices were invented.)",
+                    data={"fields": fields, "split": None}, metadata=meta, evidence=evidence,
+                )
+            shared = params.get("shared_items") or []
+            # Validate all indices reference real detected items with prices.
+            n_items = len(items)
+            all_idx: List[int] = []
+            norm_assign: Dict[str, List[int]] = {}
+            try:
+                for person, idxs in assignments.items():
+                    norm_assign[str(person)] = [int(i) for i in idxs]
+                    all_idx += norm_assign[str(person)]
+                shared = [int(i) for i in shared]
+                all_idx += shared
+            except (TypeError, ValueError):
+                return AgentResult.failure(
+                    self.id, error="invalid_assignments",
+                    message="Item indices must be integers.",
+                    data={"fields": fields, "split": None}, metadata=meta, evidence=evidence,
+                )
+            for i in all_idx:
+                if i < 0 or i >= n_items or items[i].get("price") is None:
+                    return AgentResult.failure(
+                        self.id, error="invalid_item_index",
+                        message=f"Item index {i} is out of range or has no reliable price.",
+                        data={"fields": fields, "split": None}, metadata=meta, evidence=evidence,
+                    )
+            people, rounding = _item_split(items, norm_assign, shared, tax, tip, total)
+            return AgentResult.success(
+                self.id, message="Bill split by items.",
+                data={"fields": fields, "split": {
+                    "mode": "items", "currency": fields.get("currency"),
+                    "total": total, "tax": tax, "tip": tip,
+                    "people": people, "shared_item_indices": shared, "rounding": rounding,
+                }},
+                evidence=evidence, metadata=meta,
+            )
+
+        return AgentResult.failure(
+            self.id, error="invalid_split_mode",
+            message="split_mode must be 'equal' or 'items'.",
+            data={"fields": fields, "split": None}, metadata=meta, evidence=evidence,
         )

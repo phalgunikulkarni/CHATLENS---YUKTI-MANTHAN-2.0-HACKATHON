@@ -86,6 +86,20 @@ class RelatedMemoriesRequestBody(BaseModel):
     imageId: str
     query: Optional[str] = None
 
+class AnalyzeBillRequestBody(BaseModel):
+    sessionId: str
+    imageIds: List[str] = []
+    # Optional raw OCR text (selected-memory flow may pass it directly).
+    ocrText: Optional[str] = None
+    # "analyze" (default) or "split".
+    operation: Optional[str] = "analyze"
+    # Split params (only used when operation == "split").
+    splitMode: Optional[str] = "equal"   # equal | items
+    people: Optional[int] = None
+    assignments: Optional[Dict[str, List[int]]] = None
+    sharedItems: Optional[List[int]] = None
+    tip: Optional[float] = None
+
 class RoadmapStep(BaseModel):
     order: int
     title: str

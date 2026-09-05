@@ -19,6 +19,7 @@ from schemas import (
     SummarizeRequestBody,
     SummaryResponseBody,
     RelatedMemoriesRequestBody,
+    AnalyzeBillRequestBody,
     RoadmapRequestBody,
     RoadmapResponseBody,
     RoadmapStep,
@@ -309,6 +310,38 @@ def related_memories(
     result = memory_actions.run_related_memories(account, request.imageId, request.query)
     raw = result.get("raw") or []
     return [_build_memory_result(r) for r in raw]
+
+
+@app.post("/api/actions/analyze_bill")
+def analyze_bill_action(
+    request: AnalyzeBillRequestBody,
+    account: str = Depends(resolve_account),
+):
+    # P2S: Finance/Receipt agent over a selected memory. Supports plain analysis
+    # (operation="analyze", default) and bill splitting (operation="split").
+    # Reuses the EXISTING analyze_bill agent + OCR context. Never invents values;
+    # returns the structured AgentResult (fields + optional split). Read-only.
+    import memory_actions
+    extra = {
+        "operation": request.operation or "analyze",
+        "split_mode": request.splitMode or "equal",
+    }
+    if request.ocrText:
+        extra["ocr_text"] = request.ocrText
+    if request.people is not None:
+        extra["people"] = request.people
+    if request.assignments is not None:
+        extra["assignments"] = request.assignments
+    if request.sharedItems is not None:
+        extra["shared_items"] = request.sharedItems
+    if request.tip is not None:
+        extra["tip"] = request.tip
+    result = memory_actions.run_analyze_bill(account, request.imageIds, extra)
+    if not result.get("ok"):
+        # Controlled agent failure -> 422 with the safe explanation, but still
+        # return the structured body so the UI can show what's missing.
+        raise HTTPException(status_code=422, detail=result.get("message") or "Bill analysis failed")
+    return result
 
 
 @app.post("/api/images", response_model=ImageStatus)

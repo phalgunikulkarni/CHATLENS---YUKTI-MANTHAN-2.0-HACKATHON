@@ -8,7 +8,7 @@ Deterministic capability routing (NO LLM used to decide the fixed UI actions):
   "key_points"   -> summarize agent (mode=key_points)
   "roadmap"      -> summarize agent (mode=roadmap)
   "related"      -> ml_retrieval.search_memories (NO new agent)
-  "analyze_bill" -> analyze_bill agent
+  "analyze_bill" -> analyze_bill agent (analysis + bill splitting via operation=split)
   "research"     -> research agent
 
 Selected-memory context (image_id, filename, category, OCR/extracted_text,
@@ -136,3 +136,25 @@ def run_related_memories(account_id: str, image_id: str, query: Optional[str] = 
         "evidence": [{"type": "related_query", "query": q, "source_image_id": image_id}],
         "metadata": {"source_image_id": image_id, "retrieval": "ml_retrieval.search_memories"},
     }
+
+
+def run_analyze_bill(account_id: str, image_ids: List[str],
+                     extra_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Run the Finance/Receipt agent over a selected memory (analysis or split).
+
+    Reuses the SAME analyze_bill agent + existing OCR context gathering. When
+    extra_params include operation="split" (+ split_mode/people/assignments/...),
+    the agent performs bill splitting. Never invents values.
+
+    Returns the AgentResult dict (ok, agent, message, data, evidence, metadata).
+    """
+    params: Dict[str, Any] = dict(extra_params or {})
+    # Gather OCR text from the first selected memory (consistent with summarize).
+    if image_ids:
+        ctx = _memory_context(image_ids[0])
+        txt = (ctx.get("extracted_text") or "").strip()
+        if txt and not params.get("ocr_text"):
+            params["ocr_text"] = txt
+        params.setdefault("image_id", image_ids[0])
+    agent_ctx = AgentContext(account_id=account_id, params=params)
+    return _ORCH.dispatch(agent_ctx, agent_id="analyze_bill").to_dict()
