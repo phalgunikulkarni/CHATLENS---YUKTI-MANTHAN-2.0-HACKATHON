@@ -75,13 +75,13 @@ def _is_hidden(name: str) -> bool:
     return name.startswith(".")
 
 
-def _stable_image_id(file_path: Path) -> str:
+def stable_image_id(file_path: str | os.PathLike[str] | Path) -> str:
     """Deterministic id derived from the image's path (Requirement 2.6).
 
     Uses the POSIX-style relative-agnostic absolute path so the same file always
     yields the same id. SHA-1 hex digest keeps ids short and filesystem-safe.
     """
-    normalized = file_path.resolve().as_posix()
+    normalized = Path(file_path).resolve().as_posix()
     return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
 
 
@@ -130,7 +130,7 @@ def scan_dataset(dataset_path: str | os.PathLike[str]) -> ScanResult:
 
             result.records.append(
                 ImageRecord(
-                    image_id=_stable_image_id(file_path),
+                    image_id=stable_image_id(file_path),
                     file_path=str(file_path),
                     filename=filename,
                     category=category,

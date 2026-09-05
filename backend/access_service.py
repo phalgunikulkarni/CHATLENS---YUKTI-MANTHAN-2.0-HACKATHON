@@ -277,16 +277,23 @@ def _start_watcher(account_id: str, roots: List[str]) -> None:
         idx = _get_indexer()
 
         def on_batch(changed_roots):
-            # NOTE (Task 6): not account-aware yet — deferred by design.
             try:
                 if idx is not None:
                     idx.index_locations(list(changed_roots), account_id=account_id)
             except Exception as exc:  # noqa: BLE001
                 print(f"[access] watcher index failed: {exc}")
 
+        def on_delete(paths):
+            try:
+                if idx is not None:
+                    idx.remove_paths(paths, account_id=account_id)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[access] watcher cleanup failed: {exc}")
+
         watcher = FolderWatcher(
             roots=roots,
             on_batch=on_batch,
+            on_delete=on_delete,
             notify=lambda m: print(f"[access] {m}"),
         )
         watcher.start()

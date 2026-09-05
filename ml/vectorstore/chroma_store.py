@@ -205,6 +205,12 @@ class ChromaStore:
     def get_text_by_image_id(self, image_id: str, account_id: str) -> Optional[Dict[str, Any]]:
         return self._get_one(self.text, text_id(account_id, image_id))
 
+    def delete_visual(self, image_id: str, account_id: str) -> None:
+        self.visual.delete(ids=[visual_id(account_id, image_id)])
+
+    def delete_text(self, image_id: str, account_id: str) -> None:
+        self.text.delete(ids=[text_id(account_id, image_id)])
+
     @staticmethod
     def _get_one(collection, record_id: str) -> Optional[Dict[str, Any]]:
         """Direct ID lookup (not a similarity query)."""

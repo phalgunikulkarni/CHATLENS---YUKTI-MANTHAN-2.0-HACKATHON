@@ -40,12 +40,17 @@ class _Collector:
     """Mock on_batch: records the roots it was asked to (re)index."""
     def __init__(self):
         self.calls = []
+        self.deleted = []
         self.paths_seen = []
         self.lock = threading.Lock()
 
     def __call__(self, roots):
         with self.lock:
             self.calls.append(list(roots))
+
+    def on_delete(self, paths):
+        with self.lock:
+            self.deleted.extend(paths)
 
 
 class WatcherTest(unittest.TestCase):
@@ -58,6 +63,7 @@ class WatcherTest(unittest.TestCase):
         # Short timings for fast tests.
         self.w = FolderWatcher(
             roots=self.roots, on_batch=self.collector,
+            on_delete=self.collector.on_delete,
             is_eligible=is_static_image_file,
             notify=lambda m: None,
             debounce_seconds=0.3, stability_interval=0.1,
@@ -86,6 +92,22 @@ class WatcherTest(unittest.TestCase):
     def test_new_png_and_nested(self):
         _static(self.tmp / "Pictures" / "nested" / "n.png", "PNG")
         self.assertTrue(self._wait_for_calls(), "nested png should be detected")
+
+    def test_deleted_image_triggers_cleanup_callback(self):
+        path = self.tmp / "Pictures" / "removed.jpg"
+        _static(path, "JPEG")
+        self.assertTrue(self._wait_for_calls(), "image should be indexed before deletion")
+        self.collector.deleted.clear()
+        path.unlink()
+        end = time.time() + 6.0
+        while time.time() < end and str(path) not in self.collector.deleted:
+            time.sleep(0.1)
+        self.assertIn(str(path), self.collector.deleted)
+
+    def test_already_deleted_path_is_safe(self):
+        missing = self.tmp / "Pictures" / "already-gone.jpg"
+        self.w._enqueue_deleted(str(missing))
+        self.assertEqual(self.collector.deleted, [str(missing)])
 
     def test_static_webp_triggers(self):
         _static(self.tmp / "Downloads" / "s.webp", "WEBP")

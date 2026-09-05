@@ -244,6 +244,22 @@ class LibraryIndexer:
         """Alias for index_locations(); named for the integration trigger."""
         return self.index_locations(locations, account_id=account_id, force=force)
 
+    def remove_paths(self, paths, account_id: str) -> int:
+        """Remove account-scoped records for filesystem paths that disappeared."""
+        from ml.ingestion.scanner import stable_image_id
+
+        removed = 0
+        for path in paths:
+            try:
+                image_id = stable_image_id(path)
+                self.store.delete_visual(image_id, account_id)
+                self.store.delete_text(image_id, account_id)
+                removed += 1
+            except Exception:
+                # A missing path or already-removed record must not stop sync.
+                continue
+        return removed
+
     def retrieve(self, query, account_id: str, top_k: int = 10, signal: Optional[str] = None):
         """Delegate to the EXISTING Retriever (retrieval logic unchanged)."""
         if self._retriever is None:

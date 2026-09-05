@@ -58,11 +58,13 @@ class FolderWatcher:
     ----------
     roots : list[str]
         Approved watch roots (must come from LocalImageAccess.default_user_scope()).
-    on_batch : callable(list[str]) -> None
+        on_batch : callable(list[str]) -> None
         Called with a list of approved roots that had eligible changes; the
         callback is expected to invoke the existing LibraryIndexer.index_locations
         on them (incremental). Provided by the harness so this layer stays free
         of ML imports.
+        on_delete : callable(list[str]) -> None, optional
+            Called with filesystem paths that disappeared from approved roots.
     is_eligible : callable(str) -> bool
         Eligibility predicate (defaults to the existing static-image policy).
     notify : callable(str) -> None, optional
@@ -73,6 +75,7 @@ class FolderWatcher:
         self,
         roots: Iterable[str],
         on_batch: Callable[[List[str]], None],
+        on_delete: Optional[Callable[[List[str]], None]] = None,
         is_eligible: Callable[[str], bool] = _default_eligibility,
         notify: Optional[Callable[[str], None]] = None,
         debounce_seconds: float = DEFAULT_DEBOUNCE_SECONDS,
@@ -84,6 +87,7 @@ class FolderWatcher:
         # (e.g. /var/... -> /private/var/...), so roots must match that form.
         self.roots = [os.path.realpath(str(Path(r))) for r in roots]
         self._on_batch = on_batch
+        self._on_delete = on_delete or (lambda paths: None)
         self._is_eligible = is_eligible
         self._notify = notify or (lambda msg: print(msg))
         self.debounce_seconds = debounce_seconds
@@ -151,6 +155,10 @@ class FolderWatcher:
                 if dest and not event.is_directory:
                     watcher._enqueue_path(dest)
 
+            def on_deleted(self, event):
+                if not event.is_directory:
+                    watcher._enqueue_deleted(event.src_path)
+
         try:
             self._observer = Observer()
             for root in self.roots:
@@ -191,6 +199,9 @@ class FolderWatcher:
         while not self._stop.wait(self.poll_interval):
             try:
                 current = self._scan_snapshot()
+                deleted = set(self._snapshot) - set(current)
+                if deleted:
+                    self._on_delete(sorted(deleted))
                 for path, sig in current.items():
                     if self._snapshot.get(path) != sig:
                         self._enqueue_path(path)
@@ -212,6 +223,13 @@ class FolderWatcher:
                     return  # already queued -> coalesce duplicate events
                 self._pending.add(path)
             self._queue.put(path)
+        except Exception:
+            return
+
+    def _enqueue_deleted(self, path: str) -> None:
+        try:
+            if Path(path).suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}:
+                self._on_delete([path])
         except Exception:
             return
 
