@@ -47,14 +47,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = str(PROJECT_ROOT / "chroma_db")
 
 
-def visual_id(image_id: str) -> str:
+def visual_id(account_id: str, image_id: str) -> str:
     """Deterministic ChromaDB id for a visual record."""
-    return f"visual_{image_id}"
+    return f"visual_{account_id}_{image_id}"
 
 
-def text_id(image_id: str) -> str:
+def text_id(account_id: str, image_id: str) -> str:
     """Deterministic ChromaDB id for a text record."""
-    return f"text_{image_id}"
+    return f"text_{account_id}_{image_id}"
 
 
 def _clean_metadata(md: Dict[str, Any]) -> Dict[str, Any]:
@@ -117,7 +117,7 @@ class ChromaStore:
 
     # -- indexing -------------------------------------------------------------
 
-    def upsert_visual(self, record: Any, filename: Optional[str] = None,
+    def upsert_visual(self, record: Any, account_id: str, filename: Optional[str] = None,
                       extra_metadata: Optional[Dict[str, Any]] = None) -> bool:
         """Upsert one CLIP visual embedding. Returns True if stored.
 
@@ -130,6 +130,7 @@ class ChromaStore:
         if not image_id or vec is None or not ok:
             return False
         md = {
+            "account_id": account_id,
             "image_id": image_id,
             "filename": filename if filename is not None else _derive_filename(record),
             "file_path": _get(record, "file_path"),
@@ -141,13 +142,13 @@ class ChromaStore:
             md.update(extra_metadata)
         metadata = _clean_metadata(md)
         self.visual.upsert(
-            ids=[visual_id(image_id)],
+            ids=[visual_id(account_id, image_id)],
             embeddings=[list(vec)],
             metadatas=[metadata],
         )
         return True
 
-    def upsert_text(self, record: Any) -> bool:
+    def upsert_text(self, record: Any, account_id: str) -> bool:
         """Upsert one text embedding. Skips (returns False) when no usable text.
 
         Never fabricates a vector for images without OCR text.
@@ -159,6 +160,7 @@ class ChromaStore:
         if not image_id or vec is None or not has_text or not ok:
             return False
         metadata = _clean_metadata({
+            "account_id": account_id,
             "image_id": image_id,
             "filename": _get(record, "filename") or _derive_filename(record),
             "file_path": _get(record, "file_path"),
@@ -169,13 +171,14 @@ class ChromaStore:
             "dim": _get(record, "dim", len(vec)),
         })
         self.text.upsert(
-            ids=[text_id(image_id)],
+            ids=[text_id(account_id, image_id)],
             embeddings=[list(vec)],
             metadatas=[metadata],
         )
         return True
 
     def index_visual_batch(self, records: Iterable[Any],
+                           account_id: str,
                            filenames: Optional[Dict[str, str]] = None,
                            extra_metadata: Optional[Dict[str, Dict[str, Any]]] = None) -> int:
         count = 0
@@ -183,24 +186,24 @@ class ChromaStore:
             iid = _get(rec, "image_id")
             fname = filenames.get(iid) if filenames else None
             extra = extra_metadata.get(iid) if extra_metadata else None
-            if self.upsert_visual(rec, filename=fname, extra_metadata=extra):
+            if self.upsert_visual(rec, account_id=account_id, filename=fname, extra_metadata=extra):
                 count += 1
         return count
 
-    def index_text_batch(self, records: Iterable[Any]) -> int:
+    def index_text_batch(self, records: Iterable[Any], account_id: str) -> int:
         count = 0
         for rec in records:
-            if self.upsert_text(rec):
+            if self.upsert_text(rec, account_id=account_id):
                 count += 1
         return count
 
     # -- lookup / stats (NO similarity search) --------------------------------
 
-    def get_visual_by_image_id(self, image_id: str) -> Optional[Dict[str, Any]]:
-        return self._get_one(self.visual, visual_id(image_id))
+    def get_visual_by_image_id(self, image_id: str, account_id: str) -> Optional[Dict[str, Any]]:
+        return self._get_one(self.visual, visual_id(account_id, image_id))
 
-    def get_text_by_image_id(self, image_id: str) -> Optional[Dict[str, Any]]:
-        return self._get_one(self.text, text_id(image_id))
+    def get_text_by_image_id(self, image_id: str, account_id: str) -> Optional[Dict[str, Any]]:
+        return self._get_one(self.text, text_id(account_id, image_id))
 
     @staticmethod
     def _get_one(collection, record_id: str) -> Optional[Dict[str, Any]]:
@@ -246,6 +249,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Index a dataset into persistent ChromaDB.")
     parser.add_argument("dataset_path", nargs="?", default="data/test_dataset")
     parser.add_argument("--db", default=DEFAULT_DB_PATH)
+    parser.add_argument("--account-id", required=True)
     args = parser.parse_args()
 
     scan = scan_dataset(args.dataset_path)
@@ -256,7 +260,7 @@ if __name__ == "__main__":
     text = TextEmbedder().embed_ocr_results(ocr, filenames=filenames)
 
     store = ChromaStore(db_path=args.db).open()
-    v = store.index_visual_batch(visual, filenames=filenames)
-    t = store.index_text_batch(text)
+    v = store.index_visual_batch(visual, account_id=args.account_id, filenames=filenames)
+    t = store.index_text_batch(text, account_id=args.account_id)
     print(f"Indexed visual={v}, text={t}")
     print("Collection stats:", store.stats())

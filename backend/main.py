@@ -1,5 +1,6 @@
 import os
 import uuid
+import inspect
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -92,6 +93,13 @@ def _status_to_frontend(processing_status: str) -> str:
     return mapping.get(processing_status, "processing")
 
 
+def _search_for_account(query: str, account_id: str, top_k: int):
+    """Call the account-aware retrieval adapter while tolerating old test fakes."""
+    search_memories = ml_retrieval.search_memories
+    if "account_id" in inspect.signature(search_memories).parameters:
+        return search_memories(query, account_id=account_id, top_k=top_k)
+    return search_memories(query, top_k=top_k)
+
 def _build_memory_result(raw: dict) -> MemoryResult:
     """
     Build a MemoryResult from an adapter search dict. Explanation signals (if
@@ -115,9 +123,10 @@ def search(
     account: str = Depends(resolve_account),
     db: Session = Depends(get_db),
 ):
-    # Retrieval is UNCHANGED (no account threading into retrieval — that is a
-    # later phase). Persistence wraps around the existing call: run the search,
-    # then persist the query + returned result refs under the resolved account.
+    # Retrieval keeps its existing ranking behavior while receiving the
+    # resolved account for Chroma-level ownership filtering. Persistence wraps
+    # around the existing call: run the search, then persist the query +
+    # returned result refs under the resolved account.
     #
     # Session resolution for persistence:
     #  - a provided sessionId owned by the account -> append to it
@@ -131,7 +140,7 @@ def search(
     else:
         session_id = chat_repo.create_conversation(db, account)
 
-    raw = ml_retrieval.search_memories(request.query, top_k=5)
+    raw = _search_for_account(request.query, account, top_k=10)
     results = [_build_memory_result(r) for r in raw]
 
     chat_repo.append_search_turn(db, account, session_id, request.query, raw)
@@ -151,12 +160,12 @@ def refine(
     account: str = Depends(resolve_account),
     db: Session = Depends(get_db),
 ):
-    # Retrieval UNCHANGED. Refinement is persisted onto the SAME owned
-    # conversation; cross-account/nonexistent sessionId -> 403/404 with nothing
-    # persisted (surfaced before persistence).
+    # Retrieval ranking is unchanged. Refinement is persisted onto the SAME
+    # owned conversation; cross-account/nonexistent sessionId -> 403/404 with
+    # nothing persisted (surfaced before persistence).
     chat_repo._owned_or_raise(db, account, request.sessionId)
 
-    raw = ml_retrieval.search_memories(request.message, top_k=5)
+    raw = _search_for_account(request.message, account, top_k=10)
     results = [_build_memory_result(r) for r in raw]
 
     clue_dicts = [c.model_dump() for c in request.activeClues]
@@ -294,7 +303,7 @@ def get_image_file(image_id: str, account: str = Depends(resolve_account)):
     # canonical ML/Chroma record by its path-hash id. Never accepts a client
     # path; resolve_image_path validates existence, image type, and that the
     # file is within its authorized indexed location.
-    path = ml_retrieval.resolve_image_path(image_id)
+    path = ml_retrieval.resolve_image_path(image_id, account_id=account)
     if not path:
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(path)
@@ -304,7 +313,7 @@ def get_image_file(image_id: str, account: str = Depends(resolve_account)):
 def list_library(account: str = Depends(resolve_account)):
     # Strictly read-only over the existing Chroma index. Does NOT scan,
     # ingest, embed, or index. Returns [] honestly when empty/unavailable.
-    raw = ml_retrieval.list_memories()
+    raw = ml_retrieval.list_memories(account_id=account)
     return [_build_memory_result(r) for r in raw]
 
 

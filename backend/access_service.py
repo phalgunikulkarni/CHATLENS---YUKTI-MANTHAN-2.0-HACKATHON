@@ -230,7 +230,7 @@ def _run_initial_index(account_id: str, roots: List[str]) -> None:
             st["authorized"] = False
         return  # DO NOT start watcher when the indexer is unavailable
     try:
-        report = idx.index_locations(roots)  # initial full pass (idempotent)
+        report = idx.index_locations(roots, account_id=account_id)  # initial full pass (idempotent)
         # Prefer report.visual_indexed; fall back to visual count in stats.
         count = getattr(report, "visual_indexed", 0) or 0
         if not count:
@@ -280,7 +280,7 @@ def _start_watcher(account_id: str, roots: List[str]) -> None:
             # NOTE (Task 6): not account-aware yet — deferred by design.
             try:
                 if idx is not None:
-                    idx.index_locations(list(changed_roots))
+                    idx.index_locations(list(changed_roots), account_id=account_id)
             except Exception as exc:  # noqa: BLE001
                 print(f"[access] watcher index failed: {exc}")
 

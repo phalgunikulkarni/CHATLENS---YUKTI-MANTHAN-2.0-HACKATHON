@@ -8,10 +8,10 @@ ChromaDB indexing). Reuses existing components through their public interfaces:
   - ChromaStore            (ml/vectorstore/chroma_store.py) for the collections
 
 Operations:
-  - search_visual(image_path | text | embedding, top_k)  -> visual similarity
-  - search_text(query_text, top_k)                       -> semantic OCR/text
-  - search_hybrid(query_text, top_k)                     -> fused visual + OCR
-  - search(query, top_k, signal=...)                     -> unified dispatch
+    - search_visual(image_path | text | embedding, account_id, top_k) -> visual similarity
+    - search_text(query_text, account_id, top_k)                       -> semantic OCR/text
+    - search_hybrid(query_text, account_id, top_k)                     -> fused visual + OCR
+    - search(query, account_id, top_k, signal=...)                     -> unified dispatch
 
 SCORE SEMANTICS
 ---------------
@@ -230,7 +230,8 @@ class Retriever:
         return top_k
 
     def _query_collection(
-        self, collection, query_embedding: Sequence[float], top_k: int, signal: str,
+        self, collection, query_embedding: Sequence[float], account_id: str,
+        top_k: int, signal: str,
     ) -> List[RankedResult]:
         count = collection.count()
         if count == 0:
@@ -240,6 +241,7 @@ class Retriever:
             query_embeddings=[list(query_embedding)],
             n_results=n,
             include=["metadatas", "distances"],
+            where={"account_id": account_id},
         )
         ids = (res.get("ids") or [[]])[0]
         metadatas = (res.get("metadatas") or [[]])[0]
@@ -300,7 +302,7 @@ class Retriever:
 
     def search_visual(
         self,
-        query: Union[str, Path, Sequence[float]],
+        query: Union[str, Path, Sequence[float]], account_id: str,
         top_k: int = 5,
     ) -> List[RankedResult]:
         """Visual similarity search against chatlens_visual_embeddings.
@@ -311,19 +313,19 @@ class Retriever:
         """
         top_k = self._valid_top_k(top_k)
         embedding = self._embed_visual_query(query)
-        return self._query_collection(self.store.visual, embedding, top_k, SIGNAL_VISUAL)
+        return self._query_collection(self.store.visual, embedding, account_id, top_k, SIGNAL_VISUAL)
 
-    def search_text(self, query_text: str, top_k: int = 5) -> List[RankedResult]:
+    def search_text(self, query_text: str, account_id: str, top_k: int = 5) -> List[RankedResult]:
         """Semantic OCR/text search against chatlens_text_embeddings."""
         top_k = self._valid_top_k(top_k)
         if query_text is None or not str(query_text).strip():
             raise ValueError("query text must be a non-empty string")
         vec = self._text_embedder()._encode(str(query_text).strip())
-        return self._query_collection(self.store.text, vec, top_k, SIGNAL_SEMANTIC_OCR)
+        return self._query_collection(self.store.text, vec, account_id, top_k, SIGNAL_SEMANTIC_OCR)
 
     def search_hybrid(
         self,
-        query_text: str,
+        query_text: str, account_id: str,
         top_k: int = 5,
     ) -> List[RankedResult]:
         """Modality-aware hybrid retrieval via adaptive-weight Reciprocal Rank Fusion.
@@ -353,8 +355,8 @@ class Retriever:
         pool = max(top_k * CANDIDATE_MULTIPLIER, MIN_CANDIDATE_POOL)
 
         # 1. Independent candidate generation from each channel.
-        visual_hits = self.search_visual(query_text, top_k=pool)   # all images
-        text_hits = self.search_text(query_text, top_k=pool)       # text-bearing
+        visual_hits = self.search_visual(query_text, account_id=account_id, top_k=pool)   # all images
+        text_hits = self.search_text(query_text, account_id=account_id, top_k=pool)       # text-bearing
 
         # Per-channel raw similarity + within-channel rank (1-based).
         v_raw = {h.image_id: h.score for h in visual_hits if h.image_id}
@@ -504,7 +506,7 @@ class Retriever:
         return "No modality evidence"
     def search(
         self,
-        query: Union[str, Path, Sequence[float]],
+        query: Union[str, Path, Sequence[float]], account_id: str,
         top_k: int = 5,
         signal: Optional[str] = None,
     ) -> List[RankedResult]:
@@ -520,24 +522,24 @@ class Retriever:
               * a natural-language string   -> HYBRID (the main behavior)
         """
         if signal == SIGNAL_VISUAL:
-            return self.search_visual(query, top_k=top_k)
+            return self.search_visual(query, account_id=account_id, top_k=top_k)
         if signal == SIGNAL_SEMANTIC_OCR:
             if not isinstance(query, (str, Path)):
                 raise ValueError("semantic_ocr search requires a text query")
-            return self.search_text(str(query), top_k=top_k)
+            return self.search_text(str(query), account_id=account_id, top_k=top_k)
         if signal == SIGNAL_HYBRID:
             if not isinstance(query, (str, Path)):
                 raise ValueError("hybrid search requires a text query")
-            return self.search_hybrid(str(query), top_k=top_k)
+            return self.search_hybrid(str(query), account_id=account_id, top_k=top_k)
 
         # Inference (signal is None)
         if isinstance(query, (str, Path)):
             p = Path(query)
             if p.is_file() and p.suffix.lower() in _IMAGE_SUFFIXES:
-                return self.search_visual(p, top_k=top_k)   # query-by-image
+                return self.search_visual(p, account_id=account_id, top_k=top_k)   # query-by-image
             # Natural-language description -> hybrid is the default behavior.
-            return self.search_hybrid(str(query), top_k=top_k)
-        return self.search_visual(query, top_k=top_k)
+            return self.search_hybrid(str(query), account_id=account_id, top_k=top_k)
+        return self.search_visual(query, account_id=account_id, top_k=top_k)
 
 
 if __name__ == "__main__":
@@ -548,6 +550,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Query the ChatLens ChromaDB index (read-only).")
     parser.add_argument("query", help="natural-language query, or an image path for query-by-image")
+    parser.add_argument("--account-id", required=True)
     parser.add_argument("--top_k", "--top-k", dest="top_k", type=int, default=5)
     parser.add_argument(
         "--signal",
@@ -569,7 +572,7 @@ if __name__ == "__main__":
             print(f"  {name}: {n}")
         print("-" * 60)
 
-    results = r.search(args.query, top_k=args.top_k, signal=args.signal)
+    results = r.search(args.query, account_id=args.account_id, top_k=args.top_k, signal=args.signal)
     if not results:
         print("No results.")
     for i, res in enumerate(results, 1):

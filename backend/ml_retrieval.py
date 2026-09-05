@@ -95,7 +95,7 @@ def _get_store():
         return None
 
 
-def resolve_image_path(image_id: str) -> Optional[str]:
+def resolve_image_path(image_id: str, account_id: str) -> Optional[str]:
     """On-disk path for an indexed image_id, or None. READ-ONLY; safe.
 
     The path is taken from Chroma metadata we indexed (never client input),
@@ -110,7 +110,7 @@ def resolve_image_path(image_id: str) -> Optional[str]:
     if store is None:
         return None
     try:
-        rec = store.get_visual_by_image_id(image_id)
+        rec = store.get_visual_by_image_id(image_id, account_id)
     except Exception as exc:  # noqa: BLE001
         print(f"[ml_retrieval] lookup failed: {exc!r}")
         return None
@@ -140,7 +140,7 @@ def resolve_image_path(image_id: str) -> Optional[str]:
         return None
 
 
-def list_memories(limit: int = 200) -> List[dict]:
+def list_memories(account_id: str, limit: int = 200) -> List[dict]:
     """List indexed memories from the canonical Chroma visual collection.
 
     Returns [] if unavailable/empty. Never fabricates.
@@ -153,7 +153,11 @@ def list_memories(limit: int = 200) -> List[dict]:
         n = col.count()
         if not n:
             return []
-        got = col.get(include=["metadatas"], limit=min(limit, n))
+        got = col.get(
+            where={"account_id": account_id},
+            include=["metadatas"],
+            limit=min(limit, n),
+        )
         metadatas = (got or {}).get("metadatas") or []
     except Exception as exc:  # noqa: BLE001
         print(f"[ml_retrieval] list_memories failed: {exc!r}")
@@ -184,7 +188,7 @@ def list_memories(limit: int = 200) -> List[dict]:
 
 
 # Max distinct results the product surfaces (fewer is valid).
-DEFAULT_MAX_RESULTS = 5
+DEFAULT_MAX_RESULTS = 10
 # Candidate pool multiplier: fetch more than we return so that removing
 # duplicates does not shrink the distinct set below the requested cap. The
 # retriever's own ranking/order is preserved; we only pick the first occurrence
@@ -209,10 +213,10 @@ def _identity_key(r: dict) -> Optional[str]:
     return None
 
 
-def search_memories(query: str, top_k: int = DEFAULT_MAX_RESULTS) -> List[dict]:
+def search_memories(query: str, account_id: str, top_k: int = DEFAULT_MAX_RESULTS) -> List[dict]:
     """
     Run a query against the canonical ml/ retriever and return up to `top_k`
-    DISTINCT results (default 5) as plain dicts, deduplicated by canonical image
+    DISTINCT results (default 10) as plain dicts, deduplicated by canonical image
     identity (image_id / stored path), preserving the retriever's ranking.
 
     - Returns [] for a blank/whitespace query.
@@ -232,7 +236,7 @@ def search_memories(query: str, top_k: int = DEFAULT_MAX_RESULTS) -> List[dict]:
     # top_k distinct images. The retriever's ranking/order is preserved.
     pool = max(top_k * _CANDIDATE_MULTIPLIER, _MIN_CANDIDATE_POOL)
     try:
-        ranked = retriever.search(query, top_k=pool)
+        ranked = retriever.search(query, account_id=account_id, top_k=pool)
     except Exception as exc:  # noqa: BLE001 - adapter must never raise to the API layer
         print(f"[ml_retrieval] search failed: {exc!r}")
         return []

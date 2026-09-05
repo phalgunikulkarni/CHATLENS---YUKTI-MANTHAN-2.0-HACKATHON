@@ -57,9 +57,9 @@ def _discover_counts(access, scope):
     return per_folder, total
 
 
-def _index(indexer, scope, *, force: bool):
+def _index(indexer, scope, *, account_id: str, force: bool):
     print("\nEmbedding eligible images (existing pipeline)...")
-    report = indexer.index_locations(scope, force=force)
+    report = indexer.index_locations(scope, account_id=account_id, force=force)
     d = report.to_dict()
     print("-" * 60)
     print(f"New/changed processed: {d['new_or_changed']}")
@@ -71,7 +71,7 @@ def _index(indexer, scope, *, force: bool):
     return report
 
 
-def _query_loop(indexer, top_k: int) -> None:
+def _query_loop(indexer, account_id: str, top_k: int) -> None:
     print("\nEnter a natural-language query to search your indexed images.")
     print("(blank line or 'quit' to exit)")
     while True:
@@ -83,7 +83,7 @@ def _query_loop(indexer, top_k: int) -> None:
         if not q or q.lower() in {"quit", "exit"}:
             return
         try:
-            results = indexer.retrieve(q, top_k=top_k)
+            results = indexer.retrieve(q, account_id=account_id, top_k=top_k)
         except Exception as exc:  # never crash the harness on a bad query
             print(f"  retrieval error: {exc}")
             continue
@@ -109,6 +109,7 @@ def main() -> int:
         description="Terminal test harness: consent -> auto-index local images -> query."
     )
     parser.add_argument("--top_k", "--top-k", dest="top_k", type=int, default=10)
+    parser.add_argument("--account-id", required=True, help="Account identity for scoped indexing and retrieval.")
     parser.add_argument("--force", action="store_true",
                         help="Reprocess all discovered images (ignore change-skip).")
     parser.add_argument("--sync", action="store_true",
@@ -158,7 +159,7 @@ def main() -> int:
     # STEP 7: auto-continue into the EXISTING embedding/ingestion pipeline
     # (no extra confirmation). Pipeline behavior is unchanged.
     indexer = LibraryIndexer()
-    _index(indexer, scope, force=args.force)
+    _index(indexer, scope, account_id=args.account_id, force=args.force)
 
     # STEP 8: start automatic synchronization (watcher) over the SAME approved
     # scope. The watcher triggers the existing incremental indexer for new/
@@ -168,7 +169,7 @@ def main() -> int:
     from ml.filesystem.local_access import is_static_image_file
 
     def _on_change(roots):
-        indexer.index_locations(roots)  # existing incremental (fingerprint) path
+        indexer.index_locations(roots, account_id=args.account_id)  # existing incremental (fingerprint) path
 
     watcher = None
     if not args.no_watch:
@@ -182,7 +183,7 @@ def main() -> int:
               + f"  (backend: {watcher.backend})")
 
     try:
-        _query_loop(indexer, top_k=args.top_k)
+        _query_loop(indexer, account_id=args.account_id, top_k=args.top_k)
     finally:
         if watcher is not None:
             watcher.stop()

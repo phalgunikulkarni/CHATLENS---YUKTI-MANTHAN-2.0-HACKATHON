@@ -104,7 +104,9 @@ class LibraryIndexer:
 
     Typical usage:
         idx = LibraryIndexer()
-        report = idx.index_locations(["/authorized/path/A", "/authorized/path/B"])
+        report = idx.index_locations(
+            ["/authorized/path/A", "/authorized/path/B"], account_id="acct-example"
+        )
         results = idx.retrieve("a receipt from a restaurant", top_k=10)
 
     Re-calling index_locations()/sync() later picks up new/changed images only.
@@ -164,9 +166,9 @@ class LibraryIndexer:
         report.discovered_images = len(records)
         return records
 
-    def _needs_processing(self, image_id: str, fingerprint: str) -> bool:
+    def _needs_processing(self, image_id: str, account_id: str, fingerprint: str) -> bool:
         """True if this image is new or changed since last index (idempotency)."""
-        existing = self.store.get_visual_by_image_id(image_id)
+        existing = self.store.get_visual_by_image_id(image_id, account_id)
         if existing is None:
             return True
         md = existing.get("metadata") or {}
@@ -174,7 +176,7 @@ class LibraryIndexer:
 
     # -- public API for the integration layer --------------------------------
 
-    def index_locations(self, locations, force: bool = False) -> IndexReport:
+    def index_locations(self, locations, account_id: str, force: bool = False) -> IndexReport:
         """Scan + index ONLY the given user-authorized locations.
 
         Args:
@@ -196,7 +198,7 @@ class LibraryIndexer:
             iid = getattr(rec, "image_id", None)
             fp = _fingerprint(getattr(rec, "file_path", ""))
             fingerprints[iid] = fp
-            if force or self._needs_processing(iid, fp):
+            if force or self._needs_processing(iid, account_id, fp):
                 to_process.append(rec)
             else:
                 report.skipped_unchanged += 1
@@ -233,21 +235,21 @@ class LibraryIndexer:
             }
 
         report.visual_indexed = self.store.index_visual_batch(
-            visual, filenames=filenames, extra_metadata=extra_md)
-        report.text_indexed = self.store.index_text_batch(text)
+            visual, account_id=account_id, filenames=filenames, extra_metadata=extra_md)
+        report.text_indexed = self.store.index_text_batch(text, account_id=account_id)
         report.stats = self.store.stats()
         return report
 
-    def sync(self, locations, force: bool = False) -> IndexReport:
+    def sync(self, locations, account_id: str, force: bool = False) -> IndexReport:
         """Alias for index_locations(); named for the integration trigger."""
-        return self.index_locations(locations, force=force)
+        return self.index_locations(locations, account_id=account_id, force=force)
 
-    def retrieve(self, query, top_k: int = 10, signal: Optional[str] = None):
+    def retrieve(self, query, account_id: str, top_k: int = 10, signal: Optional[str] = None):
         """Delegate to the EXISTING Retriever (retrieval logic unchanged)."""
         if self._retriever is None:
             from ml.retrieval.retriever import Retriever
             self._retriever = Retriever(store=self.store)
-        return self._retriever.search(query, top_k=top_k, signal=signal)
+        return self._retriever.search(query, account_id=account_id, top_k=top_k, signal=signal)
 
 
 if __name__ == "__main__":
@@ -260,13 +262,14 @@ if __name__ == "__main__":
         description="Index user-authorized image location(s) into ChatLens (reuses existing pipeline)."
     )
     parser.add_argument("locations", nargs="+", help="Authorized directory path(s).")
+    parser.add_argument("--account-id", required=True, help="Account identity for scoped indexing.")
     parser.add_argument("--force", action="store_true", help="Reprocess all images.")
     parser.add_argument("--query", default=None, help="Optional retrieval query after indexing.")
     parser.add_argument("--top_k", "--top-k", dest="top_k", type=int, default=10)
     args = parser.parse_args()
 
     idx = LibraryIndexer()
-    rep = idx.index_locations(args.locations, force=args.force)
+    rep = idx.index_locations(args.locations, account_id=args.account_id, force=args.force)
     import json
     print(json.dumps(rep.to_dict(), indent=2))
     if args.query:
