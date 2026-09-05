@@ -36,6 +36,7 @@ describe("MemoryCard (no retrieval percentages)", () => {
         onToggleSelect={() => {}}
         onOpen={() => {}}
         onWhy={() => {}}
+        showRetrievalExplanation
       />,
     );
 

@@ -1,4 +1,4 @@
-﻿import type { SearchResult } from "../../api/types";
+import type { SearchResult } from "../../api/types";
 import { MemoryCard } from "./MemoryCard";
 
 interface Props {
@@ -8,9 +8,19 @@ interface Props {
   onToggleSelect: (id: string) => void;
   onOpen: (id: string) => void;
   onWhy: (id: string) => void;
+  /** Forwarded to each card. True only for Search Results (not the Library). */
+  showRetrievalExplanation?: boolean;
 }
 
-export function MemoryGrid({ results, selectedIds, view, onToggleSelect, onOpen, onWhy }: Props) {
+export function MemoryGrid({
+  results,
+  selectedIds,
+  view,
+  onToggleSelect,
+  onOpen,
+  onWhy,
+  showRetrievalExplanation = false,
+}: Props) {
   return (
     <div className={`grid ${view === "list" ? "list" : ""}`}>
       {results.map((r) => (
@@ -22,6 +32,7 @@ export function MemoryGrid({ results, selectedIds, view, onToggleSelect, onOpen,
           onToggleSelect={onToggleSelect}
           onOpen={onOpen}
           onWhy={onWhy}
+          showRetrievalExplanation={showRetrievalExplanation}
         />
       ))}
     </div>

@@ -13,11 +13,28 @@ interface Props {
   onToggleSelect: (id: string) => void;
   onOpen: (id: string) => void;
   onWhy: (id: string) => void;
+  /**
+   * When true (Search Results), show retrieval signal chips and the
+   * "Why this result?" explanation. When false (Memories/Library), both are
+   * omitted. Defaults to false so plain memory cards never show search
+   * explanations. Image loading behavior is unaffected either way.
+   */
+  showRetrievalExplanation?: boolean;
 }
 
 /** A memory result card. Renders ONLY fields present in the payload. */
-export function MemoryCard({ result, selected, view, onToggleSelect, onOpen, onWhy }: Props) {
+export function MemoryCard({
+  result,
+  selected,
+  view,
+  onToggleSelect,
+  onOpen,
+  onWhy,
+  showRetrievalExplanation = false,
+}: Props) {
   const date = formatDate(result.capturedAt);
+  const showSignals =
+    showRetrievalExplanation && result.explanation && result.explanation.length > 0;
   return (
     <div className={`card ${view === "list" ? "list" : ""} ${selected ? "selected" : ""}`}>
       <button
@@ -47,21 +64,25 @@ export function MemoryCard({ result, selected, view, onToggleSelect, onOpen, onW
         {result.memorySource && (
           <div style={{ marginTop: 2 }}><SourceBadge source={result.memorySource} /></div>
         )}
-        {result.explanation && result.explanation.length > 0 && (
+        {showSignals && (
           <div className="signal-mini">
-            {[...new Set(result.explanation.map((s) => s.type))].slice(0, 4).map((t) => (
+            {[...new Set(result.explanation!.map((s) => s.type))].slice(0, 4).map((t) => (
               <span className="sig-tag" key={t}>
                 <Icon name="check" size={11} /> {t.toUpperCase()}
               </span>
             ))}
           </div>
         )}
-        <div className="card-foot">
-          <button className="why-link" onClick={() => onWhy(result.id)}>
-            <Icon name="sparkles" size={14} /> Why this result?
-          </button>
-          {date && <span className="card-date">{date}</span>}
-        </div>
+        {(showRetrievalExplanation || date) && (
+          <div className="card-foot">
+            {showRetrievalExplanation && (
+              <button className="why-link" onClick={() => onWhy(result.id)}>
+                <Icon name="sparkles" size={14} /> Why this result?
+              </button>
+            )}
+            {date && <span className="card-date">{date}</span>}
+          </div>
+        )}
       </div>
     </div>
   );

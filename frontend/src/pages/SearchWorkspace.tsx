@@ -81,6 +81,7 @@ export function SearchWorkspace() {
                 onToggleSelect={c.toggleSelect}
                 onOpen={c.openDrawer}
                 onWhy={c.openDrawer}
+                showRetrievalExplanation
               />
             )}
           </div>
