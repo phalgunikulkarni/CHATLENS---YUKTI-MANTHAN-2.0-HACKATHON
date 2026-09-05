@@ -38,35 +38,61 @@ _CURRENCY_SYMBOLS = {
 }
 
 _AMOUNT = r"(\d{1,3}(?:[,\d]{0,12})(?:\.\d{1,2})?)"
+# Totals: match anywhere on the line (not only line-start) so noisy OCR that
+# puts "TOTAL" mid-line is still read. Prefer the most specific labels.
 _TOTAL_LINE = re.compile(
-    r"(?im)^\s*(grand\s*total|total\s*amount|amount\s*due|balance\s*due|total)\b[^0-9]*"
+    r"(?i)(grand\s*total|net\s*payable|amount\s*payable|total\s*amount|amount\s*due|balance\s*due|\btotal\b)[^0-9\n]{0,20}"
     + _AMOUNT,
 )
+_SUBTOTAL_LINE = re.compile(r"(?i)(sub[\s-]*total|sub\s*tot)[^0-9\n]{0,20}" + _AMOUNT)
+_DISCOUNT_LINE = re.compile(r"(?i)(discount|less|savings?)[^0-9\n]{0,20}" + _AMOUNT)
+_TAXABLE_LINE = re.compile(r"(?i)(taxable\s*(?:amount|value|amt))[^0-9\n]{0,20}" + _AMOUNT)
+_CGST_LINE = re.compile(r"(?i)(\bC\s*GST\b)(?:[^0-9\n]*?\d{1,2}(?:\.\d+)?\s*%)?[^0-9\n]{0,12}" + _AMOUNT)
+_SGST_LINE = re.compile(r"(?i)(\bS\s*GST\b)(?:[^0-9\n]*?\d{1,2}(?:\.\d+)?\s*%)?[^0-9\n]{0,12}" + _AMOUNT)
+_IGST_LINE = re.compile(r"(?i)(\bI\s*GST\b)(?:[^0-9\n]*?\d{1,2}(?:\.\d+)?\s*%)?[^0-9\n]{0,12}" + _AMOUNT)
+# Generic tax (GST/VAT/TAX/service tax) but NOT a CGST/SGST/IGST-specific line.
 _TAX_LINE = re.compile(
-    r"(?im)^\s*(gst|vat|tax|service\s*charge|service\s*tax)\b[^0-9]*"
-    + _AMOUNT,
+    r"(?i)(?<![CSI])\b(gst|vat|tax|service\s*tax)\b(?:[^0-9\n]*?\d{1,2}(?:\.\d+)?\s*%)?[^0-9\n]{0,12}" + _AMOUNT,
 )
+_SERVICE_LINE = re.compile(r"(?i)(service\s*charge|svc\s*charge)[^0-9\n]{0,20}" + _AMOUNT)
+_OTHER_CHARGE_LINE = re.compile(
+    r"(?i)(packaging|packing|convenience|delivery|handling|container)\s*(?:charges?|fee)?[^0-9\n]{0,20}" + _AMOUNT)
+_ROUNDING_LINE = re.compile(r"(?i)(round(?:ing)?(?:\s*off)?|round\s*adj)[^0-9\n]{0,20}(-?\d+(?:\.\d{1,2})?)")
+_INVOICE_LINE = re.compile(r"(?i)(?:invoice|bill|receipt|memo|order)\s*(?:no\.?|number|#|:)\s*([A-Za-z0-9\-/]{1,24})")
+_PHONE_LINE = re.compile(r"(?<!\d)(\+?\d[\d\s\-]{7,13}\d)(?!\d)")
+_TIME_LINE = re.compile(r"\b([0-2]?\d:[0-5]\d(?::[0-5]\d)?\s*(?:[AaPp][Mm])?)\b")
+_PAYMENT_LINE = re.compile(r"(?i)\b(cash|card|credit|debit|upi|paytm|gpay|google\s*pay|phonepe|net\s*banking|wallet)\b")
+
 _CURRENCY_TOKEN = re.compile(
     r"(?i)(US\$|RS\.?|INR|USD|EUR|GBP|JPY|[$₹€£¥])",
 )
-# Common date formats: 2024-01-31, 31/01/2024, 01-31-24, Jan 31, 2024, 31 Jan 2024
+# Common date formats incl. dot separators (05-03.2026), ISO, and month names.
 _DATE_PATTERNS = [
     re.compile(r"\b(\d{4}-\d{2}-\d{2})\b"),
-    re.compile(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b"),
-    re.compile(r"(?i)\b(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\b"),
-    re.compile(r"(?i)\b([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\b"),
+    re.compile(r"\b(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})\b"),
+    re.compile(r"(?i)\b(\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{2,4})\b"),
+    re.compile(r"(?i)\b([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{2,4})\b"),
 ]
-# A line item: some text followed by a trailing price on the same line.
+# A line item with an optional trailing quantity/price. Two shapes:
+#  (a) "Name  qty  rate  amount"  (rate & amount)
+#  (b) "Name  price"              (single trailing price)
 _LINE_ITEM = re.compile(
-    r"(?m)^\s*(?P<name>[A-Za-z][A-Za-z0-9 .,'&/\-]{1,40}?)\s+"
-    r"(?:[$₹€£¥]|US\$|RS\.?)?\s*(?P<price>\d{1,4}(?:\.\d{2}))\s*$",
+    r"(?m)^\s*(?P<name>[A-Za-z][A-Za-z0-9 .,'&/()\-]{1,40}?)\s+"
+    r"(?:[$₹€£¥]|US\$|RS\.?)?\s*(?P<price>\d{1,5}(?:\.\d{1,2})?)\s*$",
 )
-_TOTAL_WORDS = re.compile(r"(?i)\b(total|subtotal|tax|balance|amount|due|change|cash|card)\b")
+_LINE_ITEM_QTY = re.compile(
+    r"(?m)^\s*(?P<name>[A-Za-z][A-Za-z0-9 .,'&/()\-]{1,40}?)\s+"
+    r"(?P<qty>\d{1,3})\s+(?:[$₹€£¥]|RS\.?)?\s*(?P<unit>\d{1,5}(?:\.\d{1,2})?)\s+"
+    r"(?:[$₹€£¥]|RS\.?)?\s*(?P<amount>\d{1,6}(?:\.\d{1,2})?)\s*$",
+)
+_TOTAL_WORDS = re.compile(r"(?i)(total|subtotal|sub\s*total|\btax|gst|vat|balance|amount|due|change|\bcash\b|\bcard\b|discount|taxable|service|round|invoice|gstin|\bdate\b|payment)")
 
 
-def _num(s: str) -> Optional[float]:
+def _num(s: Optional[str]) -> Optional[float]:
+    if s is None:
+        return None
     try:
-        return float(s.replace(",", ""))
+        return float(str(s).replace(",", ""))
     except Exception:
         return None
 
@@ -79,26 +105,28 @@ def _detect_currency(text: str) -> Optional[str]:
     return _CURRENCY_SYMBOLS.get(tok) or _CURRENCY_SYMBOLS.get(m.group(1))
 
 
-def _detect_total(text: str) -> Tuple[Optional[float], Optional[str]]:
-    """Return (total, evidence_line) using the last matching total-like line."""
-    matches = list(_TOTAL_LINE.finditer(text or ""))
-    if not matches:
-        return None, None
-    m = matches[-1]  # totals usually appear near the bottom
-    return _num(m.group(2)), m.group(0).strip()
-
-
-def _detect_tax(text: str) -> Tuple[Optional[float], Optional[str]]:
-    """Return (tax, evidence_line) from a reliably-labeled tax/GST/VAT/service line.
-
-    Conservative: only a clearly tax-labeled line counts. Never inferred from
-    the total. Returns (None, None) when no such line exists.
-    """
-    matches = list(_TAX_LINE.finditer(text or ""))
+def _last_amount(pat: re.Pattern, text: str, grp: int = 2) -> Tuple[Optional[float], Optional[str]]:
+    """Return (amount, evidence_line) from the LAST match of ``pat`` (totals/
+    summary values usually appear near the bottom). Never fabricates."""
+    matches = list(pat.finditer(text or ""))
     if not matches:
         return None, None
     m = matches[-1]
-    return _num(m.group(2)), m.group(0).strip()
+    try:
+        raw = m.group(grp)
+    except Exception:
+        return None, None
+    return _num(raw), m.group(0).strip()
+
+
+def _detect_total(text: str) -> Tuple[Optional[float], Optional[str]]:
+    return _last_amount(_TOTAL_LINE, text, grp=2)
+
+
+def _detect_tax(text: str) -> Tuple[Optional[float], Optional[str]]:
+    """Generic tax total from a clearly-labeled GST/VAT/TAX/service-tax line.
+    Never inferred from the total. Excludes CGST/SGST/IGST-specific lines."""
+    return _last_amount(_TAX_LINE, text, grp=2)
 
 
 def _detect_date(text: str) -> Optional[str]:
@@ -109,28 +137,74 @@ def _detect_date(text: str) -> Optional[str]:
     return None
 
 
+def _detect_time(text: str) -> Optional[str]:
+    m = _TIME_LINE.search(text or "")
+    return m.group(1).strip() if m else None
+
+
+def _detect_invoice(text: str) -> Optional[str]:
+    m = _INVOICE_LINE.search(text or "")
+    return m.group(1).strip() if m else None
+
+
+def _detect_phone(text: str) -> Optional[str]:
+    m = _PHONE_LINE.search(text or "")
+    if not m:
+        return None
+    digits = re.sub(r"\D", "", m.group(1))
+    return m.group(1).strip() if 8 <= len(digits) <= 14 else None
+
+
+def _detect_payment(text: str) -> Optional[str]:
+    m = _PAYMENT_LINE.search(text or "")
+    return m.group(1).strip().title() if m else None
+
+
 def _detect_merchant(text: str) -> Optional[str]:
-    """Heuristic: first non-empty, mostly-alphabetic line near the top."""
-    for line in (text or "").splitlines():
+    """Heuristic: first non-empty, mostly-alphabetic line near the top that is
+    not a totals/labels line and not a bare number/date."""
+    for line in (text or "").splitlines()[:8]:
         s = line.strip()
         if len(s) < 3:
             continue
+        if _TOTAL_WORDS.search(s):
+            continue
         letters = sum(c.isalpha() for c in s)
-        if letters >= max(3, int(len(s) * 0.5)) and not _TOTAL_WORDS.search(s):
+        digits = sum(c.isdigit() for c in s)
+        if letters >= max(3, int(len(s) * 0.5)) and digits <= letters:
             return s
     return None
 
 
 def _detect_line_items(text: str) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
-    for m in _LINE_ITEM.finditer(text or ""):
+    seen_lines: set = set()
+    # First pass: qty/unit/amount rows (richer).
+    for m in _LINE_ITEM_QTY.finditer(text or ""):
         name = m.group("name").strip()
-        if _TOTAL_WORDS.search(name):  # skip totals/tax summary rows
+        if _TOTAL_WORDS.search(name):
+            continue
+        qty = _num(m.group("qty"))
+        unit = _num(m.group("unit"))
+        amount = _num(m.group("amount"))
+        if amount is None:
+            continue
+        seen_lines.add(m.group(0).strip())
+        items.append({"name": name, "price": amount, "qty": qty,
+                      "unit_price": unit, "amount": amount})
+    # Second pass: simple "name price" rows not already captured.
+    for m in _LINE_ITEM.finditer(text or ""):
+        line = m.group(0).strip()
+        if line in seen_lines:
+            continue
+        name = m.group("name").strip()
+        if _TOTAL_WORDS.search(name):
             continue
         price = _num(m.group("price"))
         if price is None:
             continue
-        items.append({"name": name, "price": price})
+        items.append({"name": name, "price": price, "qty": None,
+                      "unit_price": None, "amount": price})
     return items
 
 
@@ -205,6 +279,144 @@ def _item_split(items: List[Dict[str, Any]], assignments: Dict[str, List[int]],
     return people, rounding
 
 
+# --- optional local-LLM (Qwen) grounded enrichment --------------------------
+
+# Fields the LLM is allowed to fill (never overrides deterministic values, and
+# only with strings/numbers that literally appear in the OCR text).
+_LLM_STR_FIELDS = ("merchant", "date", "time", "invoice_no", "phone", "payment_method")
+_LLM_NUM_FIELDS = ("total", "subtotal", "discount", "taxable_amount", "tax",
+                   "cgst", "sgst", "igst", "service_charge", "other_charges")
+
+_LLM_SYSTEM = (
+    "You extract fields from receipt OCR text. Use ONLY values that literally "
+    "appear in the text. Never guess, never compute, never invent. If a field "
+    "is not present, use null. Return ONLY strict JSON, no prose."
+)
+
+
+def _digits_only(v: Any) -> str:
+    return re.sub(r"[^0-9]", "", str(v))
+
+
+def _value_grounded_in_text(value: Any, text: str, numeric: bool) -> bool:
+    """A value is accepted only if it is evidenced in the OCR text."""
+    if value is None:
+        return False
+    t = text or ""
+    if numeric:
+        # the number's digits must appear in the text (ignoring separators)
+        d = _digits_only(value)
+        return len(d) >= 1 and d in _digits_only(t)
+    sval = str(value).strip()
+    if len(sval) < 2:
+        return False
+    # case-insensitive substring OR all significant tokens present
+    low = t.lower()
+    if sval.lower() in low:
+        return True
+    toks = [w for w in re.split(r"\s+", sval.lower()) if len(w) > 2]
+    return bool(toks) and all(w in low for w in toks)
+
+
+def _llm_enrich(fields: Dict[str, Any], ocr_text: str) -> bool:
+    """Fill ONLY null fields using the local Qwen model, grounded in OCR text.
+
+    Returns True if the LLM ran and contributed at least one grounded value.
+    Silent no-op (returns False) when the local LLM is unavailable/offline or
+    returns anything unusable. Never overrides existing values; never invents.
+    """
+    from .llm_client import LocalLLMClient, LLMError
+    client = LocalLLMClient()
+    prompt = (
+        "Extract these receipt fields as JSON with exactly these keys: "
+        "merchant, date, time, invoice_no, phone, payment_method, total, subtotal, "
+        "discount, taxable_amount, tax, cgst, sgst, igst, service_charge, other_charges. "
+        "Strings for text fields, numbers for money fields, null if absent. "
+        "Use ONLY what appears in the text.\n\nOCR TEXT:\n" + (ocr_text or "") + "\n\nJSON:"
+    )
+    try:
+        raw = client.generate(prompt, system=_LLM_SYSTEM, temperature=0.0)
+    except LLMError:
+        return False
+    except Exception:  # noqa: BLE001
+        return False
+
+    # Extract the first JSON object from the response.
+    import json as _json
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not m:
+        return False
+    try:
+        parsed = _json.loads(m.group(0))
+    except Exception:  # noqa: BLE001
+        return False
+    if not isinstance(parsed, dict):
+        return False
+
+    contributed = False
+    for k in _LLM_STR_FIELDS:
+        if fields.get(k) is None and isinstance(parsed.get(k), (str,)):
+            cand = parsed[k].strip()
+            if cand and _value_grounded_in_text(cand, ocr_text, numeric=False):
+                fields[k] = cand
+                contributed = True
+    for k in _LLM_NUM_FIELDS:
+        if fields.get(k) is None and isinstance(parsed.get(k), (int, float)):
+            cand = float(parsed[k])
+            if _value_grounded_in_text(cand, ocr_text, numeric=True):
+                fields[k] = cand
+                contributed = True
+    return contributed
+
+
+# --- deterministic arithmetic validation (NO LLM math) ----------------------
+
+def _validate_arithmetic(fields: Dict[str, Any]) -> Dict[str, Any]:
+    """Cross-check the receipt's money fields deterministically.
+
+    - line_items_sum: sum of item amounts (when items exist).
+    - gst_total: cgst + sgst + igst + generic tax (only the components present).
+    - computed_total: subtotal - discount + taxes + charges + rounding, computed
+      ONLY when the needed inputs are present.
+    - reconciles: whether computed_total matches the detected grand total (2dp).
+    Never fabricates: any field whose inputs are missing is left as None.
+    """
+    def g(k):
+        v = fields.get(k)
+        return float(v) if isinstance(v, (int, float)) else None
+
+    out: Dict[str, Any] = {}
+    items = fields.get("line_items") or []
+    amounts = [float(it.get("amount") if it.get("amount") is not None else it.get("price"))
+               for it in items if (it.get("amount") is not None or it.get("price") is not None)]
+    out["line_items_sum"] = _round2(sum(amounts)) if amounts else None
+
+    gst_parts = [g("cgst"), g("sgst"), g("igst"), g("tax")]
+    gst_present = [x for x in gst_parts if x is not None]
+    out["gst_total"] = _round2(sum(gst_present)) if gst_present else None
+
+    subtotal = g("subtotal")
+    base = subtotal if subtotal is not None else out["line_items_sum"]
+    if base is not None:
+        computed = base
+        d = g("discount")
+        if d is not None:
+            computed -= d
+        for extra in (out["gst_total"], g("service_charge"), g("other_charges"), g("rounding_adjustment")):
+            if extra is not None:
+                computed += extra
+        out["computed_total"] = _round2(computed)
+    else:
+        out["computed_total"] = None
+
+    total = g("total")
+    if out["computed_total"] is not None and total is not None:
+        out["reconciles"] = abs(out["computed_total"] - total) < 0.01
+    else:
+        out["reconciles"] = None
+    return out
+
+
 class AnalyzeBillAgent(Agent):
     id = "analyze_bill"
     description = "Rule-based extraction of receipt/bill fields from existing OCR text."
@@ -273,21 +485,20 @@ class AnalyzeBillAgent(Agent):
         merchant = _detect_merchant(ocr_text)
         line_items = _detect_line_items(ocr_text)
 
-        notes: List[str] = []
-        if merchant is None:
-            notes.append("merchant not confidently detected")
-        if date is None:
-            notes.append("date not confidently detected")
-        if total is None:
-            notes.append("total not confidently detected")
-        if currency is None:
-            notes.append("currency not confidently detected")
-        if not line_items:
-            notes.append("no line items confidently extracted")
-
-        # Coarse confidence: fraction of core fields detected (no fabrication).
-        core = [merchant, date, total, currency]
-        confidence = round(sum(1 for f in core if f is not None) / len(core), 2)
+        # Additional evidence-only fields (all nullable; never fabricated).
+        subtotal, _ = _last_amount(_SUBTOTAL_LINE, ocr_text)
+        discount, _ = _last_amount(_DISCOUNT_LINE, ocr_text)
+        taxable_amount, _ = _last_amount(_TAXABLE_LINE, ocr_text)
+        cgst, _ = _last_amount(_CGST_LINE, ocr_text)
+        sgst, _ = _last_amount(_SGST_LINE, ocr_text)
+        igst, _ = _last_amount(_IGST_LINE, ocr_text)
+        service_charge, _ = _last_amount(_SERVICE_LINE, ocr_text)
+        other_charges, _ = _last_amount(_OTHER_CHARGE_LINE, ocr_text)
+        rounding_adjustment, _ = _last_amount(_ROUNDING_LINE, ocr_text)
+        invoice_no = _detect_invoice(ocr_text)
+        time_ = _detect_time(ocr_text)
+        phone = _detect_phone(ocr_text)
+        payment_method = _detect_payment(ocr_text)
 
         # `tax` is additive: existing fields are preserved unchanged; tax is only
         # populated when a clearly-labeled tax/GST/VAT/service line is present.
@@ -298,7 +509,54 @@ class AnalyzeBillAgent(Agent):
             "currency": currency,
             "tax": tax,
             "line_items": line_items,
+            # extended, evidence-only fields (nullable; omitted-from-UI when null)
+            "invoice_no": invoice_no,
+            "time": time_,
+            "phone": phone,
+            "subtotal": subtotal,
+            "discount": discount,
+            "taxable_amount": taxable_amount,
+            "cgst": cgst,
+            "sgst": sgst,
+            "igst": igst,
+            "service_charge": service_charge,
+            "other_charges": other_charges,
+            "rounding_adjustment": rounding_adjustment,
+            "payment_method": payment_method,
         }
+
+        # OPTIONAL local-LLM (Qwen) structured enrichment. It may ONLY fill fields
+        # the deterministic pass left null, and ONLY with values that literally
+        # appear in the OCR text (grounded; no arithmetic; no fabrication). If the
+        # LLM is unavailable/offline it is a silent no-op. Deterministic values
+        # are never overridden.
+        llm_used = False
+        if params.get("use_llm", True):
+            try:
+                llm_used = _llm_enrich(fields, ocr_text)
+            except Exception:  # noqa: BLE001 - enrichment is best-effort
+                llm_used = False
+
+        # Deterministic arithmetic validation/derivation (NO LLM math). Only
+        # derives a value when its inputs are all present; never invents.
+        arithmetic = _validate_arithmetic(fields)
+
+        notes: List[str] = []
+        if fields.get("merchant") is None:
+            notes.append("merchant not confidently detected")
+        if fields.get("date") is None:
+            notes.append("date not confidently detected")
+        if fields.get("total") is None:
+            notes.append("total not confidently detected")
+        if fields.get("currency") is None:
+            notes.append("currency not confidently detected")
+        if not fields.get("line_items"):
+            notes.append("no line items confidently extracted")
+
+        # Coarse confidence: fraction of core fields detected (no fabrication).
+        core = [fields.get("merchant"), fields.get("date"), fields.get("total"), fields.get("currency")]
+        confidence = round(sum(1 for f in core if f is not None) / len(core), 2)
+
         evidence = [{
             "type": "ocr_text",
             "source": source,
@@ -315,10 +573,12 @@ class AnalyzeBillAgent(Agent):
 
         return AgentResult.success(
             self.id,
-            message="Bill analyzed (rule-based; undetected fields left null).",
-            data={"fields": fields, "confidence": confidence, "notes": notes},
+            message="Bill analyzed (rule-based + optional local-LLM enrichment; undetected fields left null).",
+            data={"fields": fields, "confidence": confidence, "notes": notes,
+                  "arithmetic": arithmetic},
             evidence=evidence,
-            metadata={"source": source, "extractor": "rule_based_v1"},
+            metadata={"source": source, "extractor": "rule_based_v2",
+                      "llm_enriched": bool(llm_used)},
         )
 
     # -- bill splitting -------------------------------------------------------

@@ -375,19 +375,63 @@ def _spawn_index_thread(account_id: str, roots: List[str]) -> threading.Thread:
     )
 
 
-def restore_on_startup() -> None:
-    """Restore persisted authorization on startup.
+# Startup-restore bookkeeping account. The persisted authorized_locations.json
+# is a single UNATTRIBUTED global {"roots": [...]}; we track the startup restore
+# under a clearly-labeled, non-user bookkeeping id so watcher/index state is
+# managed without fabricating a real user account as the owner.
+RESTORE_ACCOUNT_ID = "__startup_restore__"
 
-    Phase D LIMITATION: per-account authorization persistence is Task 8. The
-    legacy authorized_locations.json holds a single UNATTRIBUTED global
-    ``{"roots": [...]}`` that cannot be safely attributed to any specific
-    account (R12.5 forbids fabricating an owner). Therefore Phase D restores
-    NOTHING per-account here: it neither leaks the legacy global roots into a
-    specific account's state nor crashes. The account-keyed loader and
-    per-account watcher restart land in Task 8 (and Task 6 for account-aware
-    watching). This function is intentionally a safe no-op for Phase D.
+
+def restore_on_startup() -> None:
+    """Restore persisted authorization on startup and refresh the index.
+
+    Reuses the EXACT grant_access() path (validate -> spawn the same background
+    index thread -> _run_initial_index -> _start_watcher), so there is no second
+    indexing system:
+
+      1. Load persisted roots (authorized_locations.json).
+      2. RE-VALIDATE them against the positive resolved-path allowlist
+         (Desktop/Downloads/Documents/Pictures via default_user_scope()). Any
+         path outside the four folders is dropped here, so nothing outside them
+         is ever scanned/opened/embedded/indexed.
+      3. Spawn the existing background index thread. _run_initial_index() runs
+         the EXISTING incremental LibraryIndexer.index_locations() (idempotent
+         via per-file fingerprints -> new/changed images only, no duplicate
+         Chroma records, no deletion), then starts the existing FolderWatcher
+         for live changes.
+
+    Non-fatal: any failure is logged and never crashes startup. Safe no-op when
+    no roots are persisted or none survive validation.
     """
-    return
+    try:
+        persisted = _load_persisted()
+        if not persisted:
+            return
+        roots = _validate_roots(persisted)  # positive allowlist intersection
+        if not roots:
+            print("[access] restore: no persisted roots survived the allowlist; nothing to index.")
+            return
+
+        account_id = RESTORE_ACCOUNT_ID
+        with _lock:
+            st = _state_for(account_id)
+            if st["indexing"] == "running":
+                return  # a restore/index is already in flight
+            st["roots"] = roots
+            st["indexing"] = "running"
+            st["error"] = None
+            st["authorized"] = False  # becomes True once the catch-up index succeeds
+
+        # Reuse the SAME background path grant_access() uses: incremental
+        # catch-up index (idempotent) + start the existing watcher on success.
+        thread = _spawn_index_thread(account_id, roots)
+        with _lock:
+            _index_threads[account_id] = thread
+        thread.start()
+        print(f"[access] restore: catch-up indexing started for {len(roots)} allowed root(s).")
+    except Exception as exc:  # noqa: BLE001 - startup must never crash the app
+        print(f"[access] restore_on_startup failed: {exc!r}")
+        return
 
 
 def shutdown() -> None:

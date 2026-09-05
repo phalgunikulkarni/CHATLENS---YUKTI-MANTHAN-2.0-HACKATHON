@@ -31,6 +31,25 @@ import type {
  * Live adapter targeting the PROPOSED contract. Only used when
  * VITE_API_BASE_URL is configured. Every method is a thin fetch wrapper.
  */
+/** Convert any FastAPI error body shape into a safe, readable string. */
+function safeErrorText(body: unknown, status: number): string {
+  const fallback = `Could not analyze bill. Please select a valid receipt. (HTTP ${status})`;
+  if (!body || typeof body !== "object") return fallback;
+  const detail = (body as { detail?: unknown }).detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((d) => (d && typeof d === "object" && typeof (d as { msg?: unknown }).msg === "string"
+        ? (d as { msg: string }).msg : null))
+      .filter((m): m is string => Boolean(m));
+    if (msgs.length) return `Could not analyze bill: ${msgs.join("; ")}.`;
+    return fallback;
+  }
+  const message = (body as { message?: unknown }).message;
+  if (typeof message === "string" && message.trim()) return message;
+  return fallback;
+}
+
 export class HttpAdapter implements ApiService {
   constructor(private readonly baseUrl: string) {}
 
@@ -168,9 +187,14 @@ export class HttpAdapter implements ApiService {
         confidence: data.confidence ?? null,
         notes: data.notes ?? [],
         split: data.split ?? null,
+        arithmetic: data.arithmetic ?? null,
       };
     }
-    const detail = (body && (body.detail as string)) || `Bill analysis failed (HTTP ${res.status})`;
+    // FastAPI validation errors return `detail` as an ARRAY of objects
+    // ({type, loc, msg, input}); a plain HTTPException returns a string. Coerce
+    // ANY shape into a safe human-readable string so a raw object can never be
+    // rendered as a React child (which would blank the page).
+    const detail = safeErrorText(body, res.status);
     return { ok: false, message: detail, fields: null, confidence: null, notes: [detail], split: null };
   }
   roadmap(req: RoadmapRequest) {

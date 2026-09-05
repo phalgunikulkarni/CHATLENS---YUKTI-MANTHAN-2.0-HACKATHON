@@ -121,13 +121,13 @@ export function ExecutionWorkspace({
   const runBill = useCallback(async () => {
     const key = append("analyze_bill");
     try {
-      const r = await apiService.analyzeBill({ imageIds: selectedIds.slice(0, 1) });
+      const r = await apiService.analyzeBill({ sessionId: sessionId ?? "pending", imageIds: selectedIds.slice(0, 1) });
       patch(key, r.ok && r.fields ? { status: "done", bill: r }
-                                  : { status: "error", error: r.notes?.[0] ?? r.message ?? "Could not analyze this bill." });
+                                  : { status: "error", error: asText(r.notes?.[0] ?? r.message, "Could not analyze bill. Please select a valid receipt.") });
     } catch {
       patch(key, { status: "error", error: "Analyze Bill needs a receipt image with readable text." });
     }
-  }, [append, patch, selectedIds]);
+  }, [append, patch, selectedIds, sessionId]);
 
   // Equal split of an existing analyzed bill block, using the EXISTING split API.
   // Updates the block's bill.split in place (append-only: same block, no new route).
@@ -135,20 +135,20 @@ export function ExecutionWorkspace({
     setBlocks((prev) => prev.map((b) => (b.key === key ? { ...b, splitting: true, splitError: undefined } : b)));
     try {
       const r = await apiService.analyzeBill({
-        imageIds: selectedIds.slice(0, 1), operation: "split", splitMode: "equal", people,
+        sessionId: sessionId ?? "pending", imageIds: selectedIds.slice(0, 1), operation: "split", splitMode: "equal", people,
       });
       if (r.ok && r.split) {
         setBlocks((prev) => prev.map((b) =>
           b.key === key && b.bill ? { ...b, splitting: false, bill: { ...b.bill, split: r.split } } : b));
       } else {
         setBlocks((prev) => prev.map((b) =>
-          b.key === key ? { ...b, splitting: false, splitError: r.notes?.[0] ?? r.message ?? "Could not split this bill." } : b));
+          b.key === key ? { ...b, splitting: false, splitError: asText(r.notes?.[0] ?? r.message, "Could not split this bill.") } : b));
       }
     } catch {
       setBlocks((prev) => prev.map((b) =>
         b.key === key ? { ...b, splitting: false, splitError: "Splitting needs the backend and a valid total." } : b));
     }
-  }, [selectedIds]);
+  }, [selectedIds, sessionId]);
 
   // expose run() to the parent action grid
   useEffect(() => {
@@ -222,6 +222,23 @@ export function ExecutionWorkspace({
       <span style={{ display: "none" }}>{research.status}{bill.status}</span>
     </div>
   );
+}
+
+// Guarantee a value is a safe React child (string). Backend error payloads can
+// be arrays/objects (FastAPI validation); rendering those directly crashes React
+// and blanks the page. Coerce anything non-string into a readable string.
+function asText(v: unknown, fallback = "Could not analyze this bill."): string {
+  if (typeof v === "string" && v.trim()) return v;
+  if (Array.isArray(v)) {
+    const parts = v.map((x) => asText(x, "")).filter(Boolean);
+    return parts.length ? parts.join(" · ") : fallback;
+  }
+  if (v && typeof v === "object") {
+    const msg = (v as { msg?: unknown }).msg;
+    if (typeof msg === "string" && msg.trim()) return msg;
+    return fallback;
+  }
+  return fallback;
 }
 
 function money(v: number | null | undefined, currency: string | null): string | null {
@@ -335,37 +352,96 @@ function BillBody({ fields, split, notes, splitting, splitError, onSplit }: {
   const rows = [
     { label: "Merchant", value: fields.merchant },
     { label: "Date", value: fields.date },
+    { label: "Time", value: fields.time ?? null },
+    { label: "Invoice", value: fields.invoice_no ?? null },
+    { label: "Phone", value: fields.phone ?? null },
     { label: "Currency", value: fields.currency },
-    { label: "Total", value: money(fields.total, fields.currency) },
-    { label: "Tax", value: money(fields.tax, fields.currency) },
+    { label: "Payment", value: fields.payment_method ?? null },
+  ].filter((r) => r.value);
+
+  const cur = fields.currency;
+  // BILL SUMMARY rows — only rendered when the value has real evidence.
+  const summary: { label: string; value: string | null; grand?: boolean }[] = [
+    { label: "Subtotal", value: money(fields.subtotal, cur) },
+    { label: "Discount", value: money(fields.discount, cur) },
+    { label: "Taxable Amount", value: money(fields.taxable_amount, cur) },
+    { label: "CGST", value: money(fields.cgst, cur) },
+    { label: "SGST", value: money(fields.sgst, cur) },
+    { label: "IGST", value: money(fields.igst, cur) },
+    { label: "Other Tax", value: money(fields.tax, cur) },
+    { label: "Service Charge", value: money(fields.service_charge, cur) },
+    { label: "Other Charges", value: money(fields.other_charges, cur) },
+    { label: "Rounding", value: money(fields.rounding_adjustment, cur) },
+    { label: "GRAND TOTAL", value: money(fields.total, cur), grand: true },
   ].filter((r) => r.value);
 
   // Evidence-only explanation: built strictly from extracted values (never invented).
   const analysis = billAnalysis(fields, items);
   const equalShares = split && split.mode === "equal" ? (split.shares ?? []) : [];
+  // If NOTHING at all was detected, show a single useful diagnostic (not a wall
+  // of "not detected"). Otherwise render the partial workup we do have.
+  const nothingDetected = rows.length === 0 && items.length === 0 && summary.length === 0;
 
   return (
     <div className="cl-block-body">
-      <dl className="cl-fields">{rows.map((r) => (
-        <div className="cl-field-row" key={r.label}><dt>{r.label}</dt><dd>{r.value}</dd></div>
-      ))}</dl>
+      {nothingDetected ? (
+        <p className="cl-error">Receipt text could not be read from this image. Try a clearer photo of the bill.</p>
+      ) : (
+        <>
+          <dl className="cl-fields">{rows.map((r) => (
+            <div className="cl-field-row" key={r.label}><dt>{r.label}</dt><dd>{r.value}</dd></div>
+          ))}</dl>
 
-      {items.length > 0 && (
-        <ul className="cl-points">{items.map((it, i) => {
-          const priced = typeof it?.price === "number" ? money(it.price, fields.currency) : null;
-          return <li key={i}>{it?.name ?? "Item"}{priced ? ` — ${priced}` : ""}</li>;
-        })}</ul>
+          {items.length > 0 && (
+            <table className="cl-bill-items">
+              <thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
+              <tbody>
+                {items.map((it, i) => (
+                  <tr key={i}>
+                    <td>{it?.name ?? "Item"}</td>
+                    <td>{typeof it?.qty === "number" ? it.qty : "—"}</td>
+                    <td>{typeof it?.unit_price === "number" ? money(it.unit_price, cur) : "—"}</td>
+                    <td>{money(typeof it?.amount === "number" ? it.amount : it?.price, cur) ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {summary.length > 0 && (
+            <dl className="cl-bill-summary">{summary.map((r) => (
+              <div className={`cl-field-row${r.grand ? " cl-grand" : ""}`} key={r.label}>
+                <dt>{r.label}</dt><dd>{r.value}</dd>
+              </div>
+            ))}</dl>
+          )}
+
+          {analysis && <p className="cl-text">{analysis}</p>}
+          {safeNotes.length > 0 && <p className="cl-muted">{safeNotes.map((n) => asText(n, "")).filter(Boolean).join(" · ")}</p>}
+        </>
       )}
-
-      {analysis && <p className="cl-text">{analysis}</p>}
-      {safeNotes.length > 0 && <p className="cl-muted">{safeNotes.join(" · ")}</p>}
 
       {/* Split prompt — inline, append-only. Only offered when a numeric total exists. */}
       {typeof fields.total === "number" && (
         <div className="cl-split">
           {equalShares.length > 0 ? (
             <div className="cl-split-result">
-              <p className="cl-text">Equal split{split?.people_count ? ` · ${split.people_count} people` : ""}:</p>
+              {/* Summary uses ONLY backend-provided values (deterministic split).
+                  No frontend arithmetic; missing values are simply omitted. */}
+              <dl className="cl-fields">
+                {typeof split?.people_count === "number" && (
+                  <div className="cl-field-row"><dt>People</dt><dd>{split.people_count}</dd></div>
+                )}
+                {money(split?.total ?? fields.total, split?.currency ?? fields.currency) && (
+                  <div className="cl-field-row"><dt>Total bill</dt>
+                    <dd>{money(split?.total ?? fields.total, split?.currency ?? fields.currency)}</dd></div>
+                )}
+                {typeof fields.tax === "number" && (
+                  <div className="cl-field-row"><dt>GST/Tax (included)</dt>
+                    <dd>{money(fields.tax, split?.currency ?? fields.currency)}</dd></div>
+                )}
+              </dl>
+              <p className="cl-text">Amount per person (GST/tax included):</p>
               <ul className="cl-points">{equalShares.map((sh, i) => (
                 <li key={i}>{sh.person} — {money(sh.amount, split?.currency ?? fields.currency)}</li>
               ))}</ul>

@@ -213,6 +213,10 @@ export interface ResearchResponse {
 export interface BillLineItem {
   name: string;
   price: number;
+  /** Extended (optional) — present when the receipt itemizes qty/unit/amount. */
+  qty?: number | null;
+  unit_price?: number | null;
+  amount?: number | null;
 }
 
 export interface BillFields {
@@ -222,6 +226,28 @@ export interface BillFields {
   currency: string | null;
   tax: number | null;
   line_items: BillLineItem[];
+  /** Extended, evidence-only nullable fields (rendered only when present). */
+  invoice_no?: string | null;
+  time?: string | null;
+  phone?: string | null;
+  subtotal?: number | null;
+  discount?: number | null;
+  taxable_amount?: number | null;
+  cgst?: number | null;
+  sgst?: number | null;
+  igst?: number | null;
+  service_charge?: number | null;
+  other_charges?: number | null;
+  rounding_adjustment?: number | null;
+  payment_method?: string | null;
+}
+
+/** Deterministic arithmetic cross-check returned by the analyzer (no LLM math). */
+export interface BillArithmetic {
+  line_items_sum?: number | null;
+  gst_total?: number | null;
+  computed_total?: number | null;
+  reconciles?: boolean | null;
 }
 
 export interface AnalyzeBillRequest {
@@ -284,6 +310,8 @@ export interface AnalyzeBillResponse {
   notes: string[];
   /** Present only for a successful split operation. */
   split?: BillSplit | null;
+  /** Deterministic arithmetic cross-check (analysis path). */
+  arithmetic?: BillArithmetic | null;
 }
 
 export interface SummarizeRequest {

@@ -42,6 +42,80 @@ def _within(child_real: str, root: str) -> bool:
     return child_real == root_real or child_real.startswith(root_real + os.sep)
 
 
+# ---------------------------------------------------------------------------
+# POSITIVE PATH ALLOWLIST (source-of-truth boundary).
+#
+# ChatLens may only access/serve/retrieve images whose RESOLVED filesystem path
+# is inside one of the four user folders, derived DYNAMICALLY from the home dir
+# (never hardcoded, no username/machine paths, no folder-NAME matching). Any
+# record whose resolved path is outside these roots is ignored at the serving/
+# retrieval layer — regardless of how it entered Chroma. This does NOT delete or
+# modify any stored data (reversible); it only refuses to surface out-of-scope
+# paths. Ingestion already enforces the same allowlist upstream
+# (ml/filesystem/local_access.py: default_user_scope()).
+# ---------------------------------------------------------------------------
+from pathlib import Path as _Path
+
+_ALLOWED_SUBDIRS = ("Desktop", "Downloads", "Documents", "Pictures")
+
+
+def _allowed_roots() -> List[str]:
+    """The four allowed roots as realpaths, derived from Path.home().
+
+    Returns only entries that resolve; existence is not required (a resolved
+    path can still be compared as a prefix). Never raises.
+    """
+    try:
+        home = _Path.home()
+    except Exception:  # noqa: BLE001
+        return []
+    roots: List[str] = []
+    for name in _ALLOWED_SUBDIRS:
+        try:
+            roots.append(os.path.realpath(str(home / name)))
+        except Exception:  # noqa: BLE001
+            continue
+    return roots
+
+
+def _resolved_record_path(raw_path: Optional[str]) -> Optional[str]:
+    """Resolve a stored metadata path to a realpath.
+
+    Relative paths (some legacy records store project-root-relative paths) are
+    anchored to the project root, mirroring resolve_image_path(). Absolute paths
+    are used as-is. Returns None when there is no path. Never raises.
+    """
+    if not raw_path:
+        return None
+    try:
+        if not os.path.isabs(raw_path):
+            raw_path = os.path.join(_PROJECT_ROOT, raw_path)
+        return os.path.realpath(raw_path)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _path_in_allowlist(raw_path: Optional[str]) -> bool:
+    """True IFF the resolved path is inside one of the four allowed roots.
+
+    Enforced purely by resolved/canonical path prefix (no folder-name rules).
+    A record with no usable path is NOT allowed (cannot prove it is in scope).
+    """
+    real = _resolved_record_path(raw_path)
+    if not real:
+        return False
+    for root in _allowed_roots():
+        if _within(real, root):
+            return True
+    return False
+
+
+def _record_allowed(md: dict) -> bool:
+    """Allowlist check for a Chroma metadata dict (uses absolute_path/file_path)."""
+    md = md or {}
+    return _path_in_allowlist(md.get("absolute_path") or md.get("file_path"))
+
+
 # Module-level singleton Retriever instance. Lazily constructed on first use.
 _RETRIEVER = None
 _RETRIEVER_FAILED = False
@@ -133,6 +207,10 @@ def resolve_image_path(image_id: str) -> Optional[str]:
             return None
         if os.path.splitext(real)[1].lower() not in _ALLOWED_EXT:
             return None
+        # POSITIVE ALLOWLIST: never serve a file resolving outside the four
+        # allowed user folders, regardless of how it was indexed.
+        if not _path_in_allowlist(real):
+            return None
         source_root = md.get("source_root")
         if source_root:
             if not _within(real, source_root):
@@ -171,6 +249,9 @@ def list_memories(limit: int = 200) -> List[dict]:
         md = md or {}
         iid = md.get("image_id")
         if not iid:
+            continue
+        # POSITIVE ALLOWLIST: only list images resolving inside the four folders.
+        if not _record_allowed(md):
             continue
         out.append(
             {
@@ -262,6 +343,10 @@ def search_memories(query: str, top_k: int = DEFAULT_MAX_RESULTS) -> List[dict]:
             "text_score": getattr(r, "text_score", None),
             "retrieval_signal": getattr(r, "retrieval_signal", None),
         }
+        # POSITIVE ALLOWLIST: never retrieve/return a result whose resolved
+        # path is outside the four allowed user folders (path-based, not name).
+        if not _path_in_allowlist(row.get("absolute_path") or row.get("file_path")):
+            continue
         key = _identity_key(row)
         # Drop exact duplicate identities (same underlying image), keeping the
         # first (highest-ranked) occurrence. Rows with no resolvable identity

@@ -30,4 +30,19 @@ describe("ActionGrid — unified 8-action set", () => {
     render(<ActionGrid heading="What would you like to do with these results?" onAction={() => {}} />);
     expect(screen.getByText("What would you like to do with these results?")).toBeInTheDocument();
   });
+
+  it("renders all 8 actions using the shared SpecularButton component", () => {
+    render(<ActionGrid heading="h" onAction={() => {}} />);
+    const buttons = screen.getAllByRole("button");
+    expect(buttons).toHaveLength(8);
+    // Every action button is a SpecularButton (same unified visual component).
+    expect(buttons.every((b) => b.className.includes("specular-button"))).toBe(true);
+    // Icon + label still present and accessible for each action.
+    for (const a of ACTIONS) {
+      const btn = screen.getByRole("button", { name: a.label });
+      expect(btn.className).toContain("specular-button");
+      expect(btn.getAttribute("aria-label")).toBe(a.label);
+    }
+  });
+
 });

@@ -263,10 +263,14 @@ export class MockAdapter implements ApiService {
     const fields = {
       merchant: "Green Leaf Grocery", date: "2024-03-15", total: 8.30,
       currency: "USD", tax: 0.61,
+      invoice_no: "INV-77", time: "18:04", payment_method: "Card",
+      subtotal: 7.69, discount: null, taxable_amount: 7.69,
+      cgst: null, sgst: null, igst: null, service_charge: null,
+      other_charges: null, rounding_adjustment: null,
       line_items: [
-        { name: "Apples", price: 3.50 },
-        { name: "Milk", price: 2.99 },
-        { name: "Bread", price: 1.20 },
+        { name: "Apples", price: 3.50, qty: 1, unit_price: 3.50, amount: 3.50 },
+        { name: "Milk", price: 2.99, qty: 1, unit_price: 2.99, amount: 2.99 },
+        { name: "Bread", price: 1.20, qty: 1, unit_price: 1.20, amount: 1.20 },
       ],
     };
     if (req.operation === "split") {
@@ -295,7 +299,8 @@ export class MockAdapter implements ApiService {
                  rounding: { rule: "mock", reconciles_to_total: true } },
       };
     }
-    return { ok: true, message: "Bill analyzed (mock).", fields, confidence: 1.0, notes: [] };
+    return { ok: true, message: "Bill analyzed (mock).", fields, confidence: 1.0, notes: [],
+             arithmetic: { line_items_sum: 7.69, gst_total: 0.61, computed_total: 8.30, reconciles: true } };
   }
   async roadmap(req: RoadmapRequest): Promise<RoadmapResponse> {
     await this.simulate();

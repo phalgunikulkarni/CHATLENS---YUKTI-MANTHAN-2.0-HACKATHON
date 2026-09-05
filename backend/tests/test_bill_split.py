@@ -123,7 +123,9 @@ def test_default_analysis_unchanged():
     r = A.run(AgentContext(params={"ocr_text": SAMPLE}))
     assert isinstance(r, AgentResult) and r.ok
     assert "split" not in r.data
-    assert set(r.data.keys()) == {"fields", "confidence", "notes"}
+    # Additive: analysis now also returns a deterministic "arithmetic" section.
+    assert {"fields", "confidence", "notes"}.issubset(set(r.data.keys()))
+    assert set(r.data.keys()) <= {"fields", "confidence", "notes", "arithmetic"}
 
 
 def _main():
