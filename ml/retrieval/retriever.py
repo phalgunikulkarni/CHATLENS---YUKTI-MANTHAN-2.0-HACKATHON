@@ -42,6 +42,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 # Retrieval signals (project Retrieval_Signal terminology).
 SIGNAL_VISUAL = "visual"
 SIGNAL_SEMANTIC_OCR = "semantic_ocr"
+SIGNAL_VLM = "vlm_description"
 SIGNAL_HYBRID = "hybrid"
 
 # --- Hybrid fusion configuration (dataset-independent) ---
@@ -61,6 +62,14 @@ RRF_K = 60
 # almost entirely silenced by a single extreme outlier in the other. The
 # adaptive weight still tilts within [floor, 1-floor]. Dataset-independent.
 MODALITY_WEIGHT_FLOOR = 0.35
+
+# Conservative additive weight for the VLM description channel (Phase 3C).
+# VLM description similarity is fused as an ADDITIONAL positive-evidence term
+# ON TOP of the existing visual+OCR fusion, never replacing it. It is kept
+# below MODALITY_WEIGHT_FLOOR (0.35) so it can enrich ranking / surface a
+# VLM-only match, but cannot dominate the established CLIP/OCR behavior.
+# Tune here (single knob). 0.25 chosen as a modest starting weight.
+VLM_WEIGHT = 0.25
 
 # Candidate pool per channel before fusion. A generous pool ensures a candidate
 # that ranks well in one channel is still considered even if it is weak/absent
@@ -96,9 +105,12 @@ class RankedResult:
     # return this image -> "no evidence", not "evidence against").
     visual_score: Optional[float] = None
     text_score: Optional[float] = None
+    # VLM description channel raw similarity in [0,1] (None when absent).
+    vlm_score: Optional[float] = None
     # Per-channel within-channel rank (1 = best in that channel; None if absent).
     visual_rank: Optional[int] = None
     text_rank: Optional[int] = None
+    vlm_rank: Optional[int] = None
     # Per-channel standardized (z-score) strength within this query's channel
     # distribution; comparable across channels. None if channel absent.
     visual_z: Optional[float] = None
@@ -121,8 +133,10 @@ class RankedResult:
             "extracted_text": self.extracted_text,
             "visual_score": self.visual_score,
             "text_score": self.text_score,
+            "vlm_score": self.vlm_score,
             "visual_rank": self.visual_rank,
             "text_rank": self.text_rank,
+            "vlm_rank": self.vlm_rank,
             "visual_z": self.visual_z,
             "text_z": self.text_z,
             "modality": self.modality,
@@ -266,6 +280,7 @@ class Retriever:
                     extracted_text=md.get("extracted_text"),
                     visual_score=sim if signal == SIGNAL_VISUAL else None,
                     text_score=sim if signal == SIGNAL_SEMANTIC_OCR else None,
+                    vlm_score=sim if signal == SIGNAL_VLM else None,
                     reason=self._single_channel_reason(signal),
                 )
             )
@@ -278,6 +293,8 @@ class Retriever:
             return "Visual (CLIP) match"
         if signal == SIGNAL_SEMANTIC_OCR:
             return "OCR semantic (text) match"
+        if signal == SIGNAL_VLM:
+            return "VLM description semantic match"
         return "match"
 
     def _embed_visual_query(self, query: Union[str, Path, Sequence[float]]) -> List[float]:
@@ -323,6 +340,24 @@ class Retriever:
         vec = self._text_embedder()._encode(str(query_text).strip())
         return self._query_collection(self.store.text, vec, account_id, top_k, SIGNAL_SEMANTIC_OCR)
 
+    def search_vlm(self, query_text: str, account_id: str, top_k: int = 5) -> List[RankedResult]:
+        """Semantic search against the VLM description collection
+        (chatlens_vlm_description_embeddings).
+
+        VLM descriptions are embedded with the SAME MiniLM text model as the
+        OCR/text channel (384-d, cosine), so the query is encoded identically
+        and compared in the same space. Account isolation is enforced by the
+        ``where={"account_id": account_id}`` filter inside _query_collection,
+        exactly like the visual/text channels - a VLM match for another
+        account can never be returned. Returns [] for an empty/absent VLM
+        collection (no fabrication).
+        """
+        top_k = self._valid_top_k(top_k)
+        if query_text is None or not str(query_text).strip():
+            raise ValueError("query text must be a non-empty string")
+        vec = self._text_embedder()._encode(str(query_text).strip())
+        return self._query_collection(self.store.vlm, vec, account_id, top_k, SIGNAL_VLM)
+
     def search_hybrid(
         self,
         query_text: str, account_id: str,
@@ -357,16 +392,26 @@ class Retriever:
         # 1. Independent candidate generation from each channel.
         visual_hits = self.search_visual(query_text, account_id=account_id, top_k=pool)   # all images
         text_hits = self.search_text(query_text, account_id=account_id, top_k=pool)       # text-bearing
+        # VLM description channel (Phase 3C): an ADDITIONAL signal. Wrapped so
+        # an empty/unavailable/failing VLM collection can NEVER break hybrid
+        # search - on any error we simply proceed with visual+OCR as before.
+        try:
+            vlm_hits = self.search_vlm(query_text, account_id=account_id, top_k=pool)
+        except Exception:  # noqa: BLE001 - VLM is optional; degrade gracefully
+            vlm_hits = []
 
         # Per-channel raw similarity + within-channel rank (1-based).
         v_raw = {h.image_id: h.score for h in visual_hits if h.image_id}
         t_raw = {h.image_id: h.score for h in text_hits if h.image_id}
+        m_raw = {h.image_id: h.score for h in vlm_hits if h.image_id}
         v_rank = {h.image_id: i + 1 for i, h in enumerate(visual_hits) if h.image_id}
         t_rank = {h.image_id: i + 1 for i, h in enumerate(text_hits) if h.image_id}
+        m_rank = {h.image_id: i + 1 for i, h in enumerate(vlm_hits) if h.image_id}
 
         # 2. Standardize each channel (comparable strength, no fixed ranges).
         v_z = _zscores(v_raw)
         t_z = _zscores(t_raw)
+        m_z = _zscores(m_raw)
 
         # 3. Adaptive, evidence-derived per-query modality weights.
         #    Each channel's influence grows with how decisively it separates its
@@ -395,6 +440,8 @@ class Retriever:
             meta.setdefault(h.image_id, h)
         for h in text_hits:
             meta[h.image_id] = h  # text hit carries extracted_text metadata
+        for h in vlm_hits:
+            meta.setdefault(h.image_id, h)  # VLM-only images enter the union
         # Provenance (absolute_path / source_root) is stored on VISUAL records,
         # so source it from the visual hit when available.
         visual_meta: Dict[str, RankedResult] = {h.image_id: h for h in visual_hits}
@@ -409,11 +456,13 @@ class Retriever:
         # negative evidence.) A candidate positive in no channel still keeps a
         # small floor term from its best rank so it remains ordered, not dropped.
         fused: List[RankedResult] = []
-        for image_id in set(v_rank) | set(t_rank):
+        for image_id in set(v_rank) | set(t_rank) | set(m_rank):
             vr = v_rank.get(image_id)
             tr = t_rank.get(image_id)
+            mr = m_rank.get(image_id)
             vz_i = v_z.get(image_id)
             tz_i = t_z.get(image_id)
+            mz_i = m_z.get(image_id)
             # Fused score = weighted sum of each channel's POSITIVE standardized
             # strength (z-score, clamped at 0). Using z-scores (not ranks) means
             # a candidate that is a strong standout in ONE channel is rewarded on
@@ -425,8 +474,13 @@ class Retriever:
             # the evidence-based ordering.
             v_pos_z = max(0.0, vz_i) if (vr is not None and vz_i is not None) else 0.0
             t_pos_z = max(0.0, tz_i) if (tr is not None and tz_i is not None) else 0.0
-            evidence = v_weight * v_pos_z + t_weight * t_pos_z
-            best_rank = min([r for r in (vr, tr) if r is not None])
+            # VLM description evidence: ADDITIVE, conservatively weighted, and
+            # positive-only (below-mean or absent VLM contributes nothing). It
+            # enriches ranking / can surface a VLM-only match without altering
+            # the existing visual+OCR evidence (whose weights still sum to 1).
+            m_pos_z = max(0.0, mz_i) if (mr is not None and mz_i is not None) else 0.0
+            evidence = v_weight * v_pos_z + t_weight * t_pos_z + VLM_WEIGHT * m_pos_z
+            best_rank = min([r for r in (vr, tr, mr) if r is not None])
             rank_tiebreak = 1.0 / (RRF_K + best_rank)  # << evidence scale
             fused_score = evidence + 1e-3 * rank_tiebreak
 
@@ -435,9 +489,14 @@ class Retriever:
             tz = t_z.get(image_id)
             has_v = vr is not None
             has_t = tr is not None
+            has_m = mr is not None
+            # Existing visual/OCR modality labels are preserved exactly. Only
+            # when NEITHER visual nor OCR provided evidence but VLM did do we
+            # surface a distinct "vlm" modality (a VLM-only match).
             modality = ("both" if has_v and has_t
                         else "visual" if has_v
                         else "ocr" if has_t
+                        else "vlm" if has_m
                         else "none")
             fused.append(
                 RankedResult(
@@ -458,8 +517,10 @@ class Retriever:
                     extracted_text=src.extracted_text if src else None,
                     visual_score=round(v_raw[image_id], 6) if has_v else None,
                     text_score=round(t_raw[image_id], 6) if has_t else None,
+                    vlm_score=round(m_raw[image_id], 6) if has_m else None,
                     visual_rank=vr,
                     text_rank=tr,
+                    vlm_rank=mr,
                     visual_z=round(vz, 4) if vz is not None else None,
                     text_z=round(tz, 4) if tz is not None else None,
                     modality=modality,
