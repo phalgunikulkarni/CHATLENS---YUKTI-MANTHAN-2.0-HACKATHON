@@ -1,14 +1,23 @@
-﻿import { Icon } from "../../components/Icon";
+import { Icon } from "../../components/Icon";
 
 interface Props {
   selectedCount: number;
   loading: boolean;
   onSummarize: () => void;
   onRoadmap: () => void;
+  onExtractKeyPoints: () => void;
+  onRelated: () => void;
 }
 
 /** Actions on retrieved memories. Enabled once memories are selected. */
-export function ActionPanel({ selectedCount, loading, onSummarize, onRoadmap }: Props) {
+export function ActionPanel({
+  selectedCount,
+  loading,
+  onSummarize,
+  onRoadmap,
+  onExtractKeyPoints,
+  onRelated,
+}: Props) {
   const disabled = selectedCount === 0 || loading;
   return (
     <div className="panel">
@@ -29,10 +38,10 @@ export function ActionPanel({ selectedCount, loading, onSummarize, onRoadmap }: 
           <button className="action-btn" onClick={onRoadmap} disabled={disabled}>
             <span className="action-emoji">📚</span> Revision roadmap
           </button>
-          <button className="action-btn" onClick={onSummarize} disabled={disabled}>
+          <button className="action-btn" onClick={onExtractKeyPoints} disabled={disabled}>
             <span className="action-emoji">📋</span> Extract key points
           </button>
-          <button className="action-btn" disabled>
+          <button className="action-btn" onClick={onRelated} disabled={disabled}>
             <span className="action-emoji">🔗</span> Related memories
           </button>
         </div>

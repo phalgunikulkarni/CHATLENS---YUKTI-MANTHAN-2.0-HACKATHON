@@ -121,6 +121,13 @@ def resolve_image_path(image_id: str) -> Optional[str]:
     if not raw_path:
         return None
     try:
+        # Some records (indexed before absolute-path provenance existed) store a
+        # path RELATIVE to the project root. Anchor those to _PROJECT_ROOT so the
+        # already-indexed file resolves regardless of the process CWD. Absolute
+        # paths are used as-is. This is serving-layer resolution only; it does
+        # not change the index, retrieval, or any stored data.
+        if not os.path.isabs(raw_path):
+            raw_path = os.path.join(_PROJECT_ROOT, raw_path)
         real = os.path.realpath(raw_path)
         if not os.path.isfile(real):
             return None
@@ -131,7 +138,8 @@ def resolve_image_path(image_id: str) -> Optional[str]:
             if not _within(real, source_root):
                 return None
         else:
-            # No provenance root recorded: only serve the exact indexed path.
+            # No provenance root recorded: only serve the exact indexed path
+            # (raw_path already project-root-anchored above when relative).
             indexed_real = os.path.realpath(raw_path)
             if real != indexed_real:
                 return None

@@ -9,6 +9,7 @@ import type {
   ImageQaRequest,
   ImageQaResponse,
   RefineRequest,
+  RelatedMemoriesRequest,
   RoadmapRequest,
   RoadmapResponse,
   ScheduleConfirmRequest,
@@ -35,6 +36,7 @@ export class NotConnectedAdapter implements ApiService {
   async getExplanation(_imageId: string): Promise<ExplanationSignal[]> { this.fail(); }
   async askAboutImage(_req: ImageQaRequest): Promise<ImageQaResponse> { this.fail(); }
   async summarize(_req: SummarizeRequest): Promise<SummaryResponse> { this.fail(); }
+  async relatedMemories(_req: RelatedMemoriesRequest): Promise<SearchResult[]> { this.fail(); }
   async roadmap(_req: RoadmapRequest): Promise<RoadmapResponse> { this.fail(); }
   async proposeSchedule(_req: ScheduleProposeRequest): Promise<ScheduleProposal> { this.fail(); }
   async confirmSchedule(_req: ScheduleConfirmRequest): Promise<{ confirmed: boolean }> { this.fail(); }

@@ -9,6 +9,8 @@ import { ToastHost } from "../components/ToastHost";
 const TITLES: Record<ViewName, string> = {
   search: "Visual memory search",
   library: "Your memory library",
+  calendar: "Your calendar",
+  tasks: "Your tasks",
   connectors: "Connect your memories",
 };
 

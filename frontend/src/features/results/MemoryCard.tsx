@@ -26,7 +26,19 @@ export function MemoryCard({ result, selected, view, onToggleSelect, onOpen, onW
         aria-label={selected ? "Deselect memory" : "Select memory"}
         style={{ border: "none", padding: 0, cursor: "pointer" }}
       >
-        <img src={result.thumbnailUrl} alt={deriveAltText(result)} loading="lazy" />
+        <img
+          src={result.thumbnailUrl}
+          alt={deriveAltText(result)}
+          loading="lazy"
+          onError={(e) => {
+            // Graceful fallback ONLY for images the backend genuinely cannot
+            // serve (e.g. a source file that was deleted after indexing -> 404).
+            // Hide the broken-image glyph and mark the thumb as unavailable.
+            const img = e.currentTarget;
+            img.style.display = "none";
+            img.parentElement?.classList.add("thumb-missing");
+          }}
+        />
         <span className="select-tick"><Icon name="check" size={16} /></span>
       </button>
       <div className="card-body">

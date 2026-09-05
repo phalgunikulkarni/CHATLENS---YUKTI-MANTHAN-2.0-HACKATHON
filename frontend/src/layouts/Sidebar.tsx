@@ -7,6 +7,8 @@ import { UserMenu } from "../features/auth/UserMenu";
 const NAV: { view: ViewName; label: string; icon: IconName }[] = [
   { view: "search", label: "Search", icon: "search" },
   { view: "library", label: "Memories", icon: "library" },
+  { view: "calendar", label: "Calendar", icon: "calendar" },
+  { view: "tasks", label: "Tasks", icon: "tasks" },
   { view: "connectors", label: "Connectors", icon: "layers" },
 ];
 

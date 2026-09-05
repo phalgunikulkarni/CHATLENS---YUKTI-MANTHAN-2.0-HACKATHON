@@ -16,6 +16,8 @@ export const ENDPOINTS = {
   imageQa: "/api/images/qa",
   /** POST - summarize the selected memories. */
   summarize: "/api/actions/summarize",
+  /** POST - related memories for a selected image (reuses existing retrieval). */
+  related: "/api/actions/related",
   /** POST - turn memories into an ordered plan. */
   roadmap: "/api/actions/roadmap",
   /** POST - preview proposed calendar events. */

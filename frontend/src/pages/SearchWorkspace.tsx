@@ -92,6 +92,8 @@ export function SearchWorkspace() {
               loading={actions.loading}
               onSummarize={c.summarize}
               onRoadmap={c.makeRoadmap}
+              onExtractKeyPoints={c.extractKeyPoints}
+              onRelated={c.relatedMemories}
             />
             {actions.notConnected && (
               <div className="panel"><div className="panel-body">

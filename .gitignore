@@ -54,3 +54,6 @@ import_err.txt
 # Local authorized folder roots (server-side access state)
 authorized_locations.json
 backend/authorized_locations.json
+# ChatLens Calendar/Tasks runtime data (P2S4) — never commit user data
+backend/storage/calendar/
+backend/storage/tasks/

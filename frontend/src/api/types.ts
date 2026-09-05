@@ -171,9 +171,16 @@ export interface RefineRequest {
   activeClues: MemoryClue[];
 }
 
+export interface RelatedMemoriesRequest {
+  sessionId: string;
+  imageId: string;
+  query?: string;
+}
+
 export interface SummarizeRequest {
   sessionId: string;
   imageIds: string[];
+  mode?: "summary" | "key_points" | "roadmap";
 }
 
 export interface RoadmapRequest {

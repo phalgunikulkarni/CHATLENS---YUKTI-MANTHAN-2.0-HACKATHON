@@ -203,11 +203,11 @@ export function useChatLens() {
   const openDrawer = useCallback((id: string) => dispatch({ type: "DRAWER_OPENED", id }), [dispatch]);
   const closeDrawer = useCallback(() => dispatch({ type: "DRAWER_CLOSED" }), [dispatch]);
 
-  const summarizeIds = useCallback(async (ids: string[]) => {
+  const summarizeIds = useCallback(async (ids: string[], mode: "summary" | "key_points" = "summary") => {
     if (ids.length === 0) return;
     dispatch({ type: "ACTION_STARTED" });
     try {
-      const summary = await apiService.summarize({ sessionId: conversation.sessionId ?? "pending", imageIds: ids });
+      const summary = await apiService.summarize({ sessionId: conversation.sessionId ?? "pending", imageIds: ids, mode });
       dispatch({ type: "SUMMARY_RECEIVED", summary });
       dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Summary ready", tone: "success" } });
     } catch (err) {
@@ -240,8 +240,33 @@ export function useChatLens() {
 
   const summarize = useCallback(() => {
     const ids = results.selectedIds.length > 0 ? results.selectedIds : results.items.map((r) => r.id);
-    return summarizeIds(ids);
+    return summarizeIds(ids, "summary");
   }, [summarizeIds, results.selectedIds, results.items]);
+
+  const extractKeyPoints = useCallback(() => {
+    const ids = results.selectedIds.length > 0 ? results.selectedIds : results.items.map((r) => r.id);
+    return summarizeIds(ids, "key_points");
+  }, [summarizeIds, results.selectedIds, results.items]);
+
+  const relatedMemories = useCallback(async () => {
+    const ids = results.selectedIds.length > 0 ? results.selectedIds : results.items.map((r) => r.id);
+    if (ids.length === 0) return;
+    dispatch({ type: "ACTION_STARTED" });
+    try {
+      const related = await apiService.relatedMemories({ sessionId: conversation.sessionId ?? "pending", imageId: ids[0] });
+      dispatch({ type: "RESULTS_MERGED", items: related });
+      dispatch({ type: "ACTIONS_CLEARED" });
+      dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: `Found ${related.length} related memories`, tone: related.length ? "success" : "info" } });
+    } catch (err) {
+      if (isNotConnected(err)) {
+        dispatch({ type: "ACTION_NOT_CONNECTED" });
+        dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Related memories need the backend", tone: "error" } });
+      } else {
+        dispatch({ type: "ACTION_FAILED", message: "Could not find related memories." });
+        dispatch({ type: "TOAST_ADDED", toast: { id: uid("t"), message: "Related memories failed", tone: "error" } });
+      }
+    }
+  }, [dispatch, conversation.sessionId, results.selectedIds, results.items]);
 
   const makeRoadmap = useCallback(() => {
     const ids = results.selectedIds.length > 0 ? results.selectedIds : results.items.map((r) => r.id);
@@ -283,7 +308,7 @@ export function useChatLens() {
   return {
     runSearch, runRefine, removeClue, toggleSelect, openDrawer, closeDrawer,
     newConversation, selectConversation,
-    summarize, makeRoadmap, summarizeImage, roadmapImage,
+    summarize, makeRoadmap, summarizeImage, roadmapImage, extractKeyPoints, relatedMemories,
     proposeSchedule, confirmSchedule, cancelSchedule,
   };
 }

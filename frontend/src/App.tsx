@@ -9,6 +9,8 @@ import { useUi } from "./hooks";
 import { SearchWorkspace } from "./pages/SearchWorkspace";
 import { LibraryPage } from "./pages/LibraryPage";
 import { ConnectorsPage } from "./pages/ConnectorsPage";
+import { CalendarPage } from "./pages/CalendarPage";
+import { TasksPage } from "./pages/TasksPage";
 
 /** The protected dashboard - only rendered for authenticated users. */
 function Dashboard() {
@@ -17,6 +19,8 @@ function Dashboard() {
     <AppLayout>
       {view === "search" && <SearchWorkspace />}
       {view === "library" && <LibraryPage />}
+      {view === "calendar" && <CalendarPage />}
+      {view === "tasks" && <TasksPage />}
       {view === "connectors" && <ConnectorsPage />}
     </AppLayout>
   );

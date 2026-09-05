@@ -282,7 +282,16 @@ class Retriever:
         """Produce a 512-d CLIP query embedding from an image path, text, or vector."""
         if isinstance(query, (str, Path)):
             path = Path(query)
-            if path.is_file() and path.suffix.lower() in _IMAGE_SUFFIXES:
+            # A very long or unusual query string can make Path.is_file() raise
+            # OSError (e.g. ENAMETOOLONG) rather than returning False. Treat any
+            # such failure as "not a usable image path" and fall through to the
+            # natural-language text-query path. This preserves existing behavior
+            # for real image paths and normal text; it only avoids a crash.
+            try:
+                _is_image_file = path.is_file() and path.suffix.lower() in _IMAGE_SUFFIXES
+            except (OSError, ValueError):
+                _is_image_file = False
+            if _is_image_file:
                 rec = self._clip_embedder().embed_one(
                     image_id="__query__", file_path=str(path), category="__query__"
                 )
@@ -533,7 +542,14 @@ class Retriever:
         # Inference (signal is None)
         if isinstance(query, (str, Path)):
             p = Path(query)
-            if p.is_file() and p.suffix.lower() in _IMAGE_SUFFIXES:
+            # Guard the path probe: a long/unusual query string can make
+            # Path.is_file() raise OSError (e.g. ENAMETOOLONG). Any failure means
+            # "not a query-by-image path" -> treat as a natural-language query.
+            try:
+                _is_image_file = p.is_file() and p.suffix.lower() in _IMAGE_SUFFIXES
+            except (OSError, ValueError):
+                _is_image_file = False
+            if _is_image_file:
                 return self.search_visual(p, top_k=top_k)   # query-by-image
             # Natural-language description -> hybrid is the default behavior.
             return self.search_hybrid(str(query), top_k=top_k)

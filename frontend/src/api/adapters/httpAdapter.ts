@@ -10,6 +10,7 @@ import type {
   ImageQaRequest,
   ImageQaResponse,
   RefineRequest,
+  RelatedMemoriesRequest,
   RoadmapRequest,
   RoadmapResponse,
   ScheduleConfirmRequest,
@@ -104,6 +105,14 @@ export class HttpAdapter implements ApiService {
   }
   summarize(req: SummarizeRequest) {
     return this.post<SummaryResponse>(ENDPOINTS.summarize, req);
+  }
+  async relatedMemories(req: RelatedMemoriesRequest): Promise<SearchResult[]> {
+    const items = await this.post<SearchResult[]>(ENDPOINTS.related, req);
+    return items.map((it) => ({
+      ...it,
+      thumbnailUrl: this.absolutize(it.thumbnailUrl) ?? it.thumbnailUrl,
+      fullUrl: this.absolutize(it.fullUrl),
+    }));
   }
   roadmap(req: RoadmapRequest) {
     return this.post<RoadmapResponse>(ENDPOINTS.roadmap, req);

@@ -7,6 +7,7 @@ import type {
   ImageQaRequest,
   ImageQaResponse,
   RefineRequest,
+  RelatedMemoriesRequest,
   RoadmapRequest,
   RoadmapResponse,
   ScheduleConfirmRequest,
@@ -31,6 +32,8 @@ export interface ApiService {
   /** Conversational Q&A about a specific retrieved image (LLM-backed). */
   askAboutImage(req: ImageQaRequest): Promise<ImageQaResponse>;
   summarize(req: SummarizeRequest): Promise<SummaryResponse>;
+  /** Related memories for a selected image (existing retrieval; no new agent). */
+  relatedMemories(req: RelatedMemoriesRequest): Promise<SearchResult[]>;
   roadmap(req: RoadmapRequest): Promise<RoadmapResponse>;
   proposeSchedule(req: ScheduleProposeRequest): Promise<ScheduleProposal>;
   confirmSchedule(req: ScheduleConfirmRequest): Promise<{ confirmed: boolean }>;

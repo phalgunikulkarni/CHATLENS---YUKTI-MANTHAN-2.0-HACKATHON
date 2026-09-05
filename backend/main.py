@@ -18,8 +18,10 @@ from schemas import (
     RefineRequestBody,
     SummarizeRequestBody,
     SummaryResponseBody,
+    RelatedMemoriesRequestBody,
     RoadmapRequestBody,
     RoadmapResponseBody,
+    RoadmapStep,
     ImageStatus,
     AccessGrantResult,
     AccessStatus,
@@ -70,6 +72,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Register ChatLens-owned Calendar + Tasks routes (P2S4). Additive: does not
+# alter any existing route or retrieval/search behavior. Guarded so a calendar/
+# task import problem never crashes the whole app at startup (dev-safe).
+try:
+    from calendar_tasks.routes import register_calendar_tasks_routes
+    register_calendar_tasks_routes(app)
+except Exception as e:  # noqa: BLE001
+    print(f"[calendar_tasks] route registration failed: {e}")
+
+# Register the narrow, validated agent-action seam (P2S5) so confirmed
+# Add Calendar / Add Task actions dispatch through the existing orchestrator.
+try:
+    from calendar_tasks.agent_routes import register_agent_action_routes
+    register_agent_action_routes(app)
+except Exception as e:  # noqa: BLE001
+    print(f"[calendar_tasks] agent-action route registration failed: {e}")
 
 
 # Dependency
@@ -239,22 +259,56 @@ def get_explanation(result_id: str):
 
 
 @app.post("/api/actions/summarize", response_model=SummaryResponseBody)
-def summarize_images(request: SummarizeRequestBody):
+def summarize_images(
+    request: SummarizeRequestBody,
+    account: str = Depends(resolve_account),
+):
+    # P2S5.1: connect to the EXISTING summarize agent (local Qwen) via the
+    # deterministic action router. mode = summary | key_points | roadmap. The
+    # selected memories' real OCR/extracted text is gathered from the existing
+    # retrieval seam; missing text yields a controlled (non-hallucinating) msg.
+    import memory_actions
+    action = (request.mode or "summary")
+    result = memory_actions.run_summary_action(account, request.imageIds, action)
+    data = result.get("data") or {}
+    used = (result.get("metadata") or {}).get("used_image_ids") or []
     return SummaryResponseBody(
         sessionId=request.sessionId,
-        summary=(
-            "Summarization requires the retrieval/LLM service, which is not "
-            f"connected yet. {len(request.imageIds)} memories were selected."
-        ),
-        usedImageIds=request.imageIds,
+        summary=(data.get("summary") or result.get("message") or ""),
+        usedImageIds=used,
+        points=(data.get("points") or data.get("steps") or None),
+        ok=bool(result.get("ok")),
+        mode=data.get("mode") or action,
     )
 
 
 @app.post("/api/actions/roadmap", response_model=RoadmapResponseBody)
-def generate_roadmap(request: RoadmapRequestBody):
-    # Real generation is not connected; return an empty steps list. Do NOT
-    # fabricate roadmap content.
-    return RoadmapResponseBody(sessionId=request.sessionId, steps=[])
+def generate_roadmap(
+    request: RoadmapRequestBody,
+    account: str = Depends(resolve_account),
+):
+    # P2S5.1: revision-roadmap via the EXISTING summarize agent (mode=roadmap),
+    # grounded in the selected memories' real OCR text. No fabrication when no
+    # text is available (returns an empty step list).
+    import memory_actions
+    result = memory_actions.run_summary_action(account, request.imageIds, "roadmap")
+    steps_raw = (result.get("data") or {}).get("steps") or []
+    steps = [RoadmapStep(order=i + 1, title=t) for i, t in enumerate(steps_raw)]
+    return RoadmapResponseBody(sessionId=request.sessionId, steps=steps)
+
+
+@app.post("/api/actions/related", response_model=List[MemoryResult])
+def related_memories(
+    request: RelatedMemoriesRequestBody,
+    account: str = Depends(resolve_account),
+):
+    # P2S5.1: "Related Memories" reuses the EXISTING retrieval seam
+    # (ml_retrieval.search_memories). NO new agent, NO new retrieval system.
+    # The selected image is excluded from the returned list.
+    import memory_actions
+    result = memory_actions.run_related_memories(account, request.imageId, request.query)
+    raw = result.get("raw") or []
+    return [_build_memory_result(r) for r in raw]
 
 
 @app.post("/api/images", response_model=ImageStatus)
@@ -289,11 +343,18 @@ def get_image_status(
 
 
 @app.get("/api/images/{image_id}/file")
-def get_image_file(image_id: str, account: str = Depends(resolve_account)):
+def get_image_file(image_id: str):
     # Read-only serving of an already-indexed local image, resolved from the
     # canonical ML/Chroma record by its path-hash id. Never accepts a client
     # path; resolve_image_path validates existence, image type, and that the
     # file is within its authorized indexed location.
+    #
+    # NOTE: This GET is intentionally NOT gated by the X-Account-Id header.
+    # Browsers cannot attach that custom header to a plain <img src> request, so
+    # requiring it made every result image fail to load (401). The header is a
+    # dev-only, spoofable attribution signal (see account.py) and was never used
+    # to scope the served bytes here: resolve_image_path resolves purely by the
+    # path-hash image_id and enforces its own existence/type/traversal checks.
     path = ml_retrieval.resolve_image_path(image_id)
     if not path:
         raise HTTPException(status_code=404, detail="Image not found")

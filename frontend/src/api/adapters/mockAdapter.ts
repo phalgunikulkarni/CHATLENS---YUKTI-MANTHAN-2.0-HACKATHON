@@ -17,6 +17,7 @@ import type {
   SearchRequest,
   SearchResult,
   SummarizeRequest,
+  RelatedMemoriesRequest,
   SummaryResponse,
   TurnResponse,
 } from "../types";
@@ -228,6 +229,11 @@ export class MockAdapter implements ApiService {
       ],
       usedImageIds: req.imageIds,
     };
+  }
+  async relatedMemories(req: RelatedMemoriesRequest): Promise<SearchResult[]> {
+    await this.simulate();
+    // Mock: return a couple of pre-baked results, excluding the selected image.
+    return pick(["cn-osi-hand"]).filter((r) => r.id !== req.imageId);
   }
   async roadmap(req: RoadmapRequest): Promise<RoadmapResponse> {
     await this.simulate();

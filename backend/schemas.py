@@ -69,11 +69,22 @@ class RefineRequestBody(BaseModel):
 class SummarizeRequestBody(BaseModel):
     sessionId: str
     imageIds: List[str]
+    # P2S5.1: which selected-memory action this is. summary|key_points|roadmap.
+    mode: Optional[str] = "summary"
 
 class SummaryResponseBody(BaseModel):
     sessionId: str
     summary: str
     usedImageIds: List[str]
+    # P2S5.1: optional structured extras (key points / roadmap steps as strings).
+    points: Optional[List[str]] = None
+    ok: bool = True
+    mode: Optional[str] = "summary"
+
+class RelatedMemoriesRequestBody(BaseModel):
+    sessionId: str
+    imageId: str
+    query: Optional[str] = None
 
 class RoadmapStep(BaseModel):
     order: int

@@ -4,7 +4,7 @@ export type IconName =
   | "search" | "sparkles" | "upload" | "library" | "history" | "brain"
   | "eye" | "text" | "shapes" | "database" | "tag" | "close" | "check"
   | "grid" | "list" | "arrow" | "calendar" | "summary" | "map" | "menu"
-  | "chevron" | "wifi-off" | "image" | "layers";
+  | "chevron" | "wifi-off" | "image" | "layers" | "tasks";
 
 interface IconProps {
   name: IconName;
@@ -39,6 +39,7 @@ const PATHS: Record<IconName, string> = {
   "wifi-off": "M2 4.3L3.3 3 21 20.7 19.7 22l-3-3H12v-2l1.5-.1L2 4.3ZM12 3c3 0 5.8 1.1 8 3l-2 2a8.6 8.6 0 0 0-4.3-1.8L12 3Z",
   image: "M4 4h16v16H4V4Zm2 2v9l4-4 3 3 3-3 2 2V6H6Zm3 2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z",
   layers: "M12 2l10 6-10 6L2 8l10-6Zm0 9.6L4.7 7 2 8.6l10 6 10-6L19.3 7 12 11.6ZM2 15l10 6 10-6-2-1.2-8 4.8-8-4.8L2 15Z",
+  tasks: "M3 5h2v2H3V5Zm4 0h14v2H7V5ZM3 11h2v2H3v-2Zm4 0h14v2H7v-2ZM3 17h2v2H3v-2Zm4 0h14v2H7v-2Z",
 };
 
 export function Icon({ name, size = 20, style, className }: IconProps) {
