@@ -34,44 +34,68 @@ const TYPE_LABEL: Record<ExplanationSignalType, string> = {
  * clickable chip (icon + type label) that expands a short grounded explanation.
  * Renders only signals present in the payload and never fabricates evidence.
  * No retrieval percentages are shown to the user.
+ *
+ * Phase 3D: when the Backend supplies a stored VLM (visual) description for the
+ * image, it is shown as an additional "AI description" item INSIDE this same
+ * section (as plain, unmodified text). It is optional evidence and never
+ * replaces or alters the OCR / semantic / visual / metadata / clue signals.
  */
 export function RetrievalSignals({
   signals,
+  vlmDescription,
 }: {
   signals: ExplanationSignal[] | undefined;
+  vlmDescription?: string;
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
-  if (!hasItems(signals)) {
+  const hasSignals = hasItems(signals);
+  const hasVlm = typeof vlmDescription === "string" && vlmDescription.trim().length > 0;
+
+  if (!hasSignals && !hasVlm) {
     return <p className="explanation-empty">Explanation not available for this result.</p>;
   }
 
   return (
     <div>
-      <div className="signal-chips">
-        {signals.map((s, i) => {
-          const open = openIndex === i;
-          return (
-            <button
-              key={`${s.type}-${i}`}
-              className={`signal-chip ${open ? "open" : ""}`}
-              aria-expanded={open}
-              onClick={() => setOpenIndex(open ? null : i)}
-            >
-              <Icon name={ICON_MAP[s.icon] ?? "sparkles"} size={14} />
-              <span>{TYPE_LABEL[s.type] ?? s.type}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {openIndex !== null && signals[openIndex] && (
-        <div className="signal-expand" role="region">
-          <div className="signal-expand-title">
-            <Icon name="check" size={15} style={{ color: "#16a34a" }} />
-            {signals[openIndex].label}
+      {hasSignals && (
+        <>
+          <div className="signal-chips">
+            {signals!.map((s, i) => {
+              const open = openIndex === i;
+              return (
+                <button
+                  key={`${s.type}-${i}`}
+                  className={`signal-chip ${open ? "open" : ""}`}
+                  aria-expanded={open}
+                  onClick={() => setOpenIndex(open ? null : i)}
+                >
+                  <Icon name={ICON_MAP[s.icon] ?? "sparkles"} size={14} />
+                  <span>{TYPE_LABEL[s.type] ?? s.type}</span>
+                </button>
+              );
+            })}
           </div>
-          <p>{TYPE_EXPLANATION[signals[openIndex].type] ?? "This signal contributed to the result."}</p>
+
+          {openIndex !== null && signals![openIndex] && (
+            <div className="signal-expand" role="region">
+              <div className="signal-expand-title">
+                <Icon name="check" size={15} style={{ color: "#16a34a" }} />
+                {signals![openIndex].label}
+              </div>
+              <p>{TYPE_EXPLANATION[signals![openIndex].type] ?? "This signal contributed to the result."}</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {hasVlm && (
+        <div className="vlm-description" role="note">
+          <div className="vlm-description-title">
+            <Icon name="eye" size={15} style={{ color: "var(--accent)" }} />
+            <span>AI description</span>
+          </div>
+          <p className="vlm-description-text">{vlmDescription!.trim()}</p>
         </div>
       )}
     </div>

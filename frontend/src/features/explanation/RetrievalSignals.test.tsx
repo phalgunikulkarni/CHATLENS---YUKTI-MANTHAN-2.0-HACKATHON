@@ -39,4 +39,33 @@ describe("RetrievalSignals (grounded, no percentages)", () => {
     render(<RetrievalSignals signals={undefined} />);
     expect(screen.getByText(/Explanation not available for this result\./i)).toBeTruthy();
   });
+
+  it("shows the VLM description under an \"AI description\" item when present", () => {
+    render(
+      <RetrievalSignals
+        signals={signals}
+        vlmDescription="A handwritten page of OSI model notes with a layered diagram."
+      />,
+    );
+    expect(screen.getByText(/AI description/i)).toBeTruthy();
+    expect(
+      screen.getByText("A handwritten page of OSI model notes with a layered diagram."),
+    ).toBeTruthy();
+    // Existing signal chips are preserved alongside it.
+    expect(screen.getByText("OCR")).toBeTruthy();
+    expect(screen.getByText("Visual")).toBeTruthy();
+  });
+
+  it("renders normally (no AI description item) when no VLM description is provided", () => {
+    render(<RetrievalSignals signals={signals} />);
+    expect(screen.queryByText(/AI description/i)).toBeNull();
+    expect(screen.getByText("OCR")).toBeTruthy();
+  });
+
+  it("shows the VLM description even when there are no other signals", () => {
+    render(<RetrievalSignals signals={undefined} vlmDescription="A photo of a cafe receipt." />);
+    expect(screen.queryByText(/Explanation not available/i)).toBeNull();
+    expect(screen.getByText(/AI description/i)).toBeTruthy();
+    expect(screen.getByText("A photo of a cafe receipt.")).toBeTruthy();
+  });
 });

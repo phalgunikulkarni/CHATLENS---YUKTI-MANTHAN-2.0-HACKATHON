@@ -94,7 +94,7 @@ export function ImageDetailDrawer({ result, selected, onClose, onToggleSelect, o
           <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Icon name="sparkles" size={16} style={{ color: "var(--accent)" }} /> Why this result?
           </div>
-          <RetrievalSignals signals={result.explanation} />
+          <RetrievalSignals signals={result.explanation} vlmDescription={result.vlmDescription} />
         </div>
 
         <div className="drawer-section" style={{ borderBottom: "none" }}>

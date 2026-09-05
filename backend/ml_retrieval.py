@@ -213,6 +213,34 @@ def _identity_key(r: dict) -> Optional[str]:
     return None
 
 
+def _vlm_description_for(image_id, account_id):
+    """Return the account's own stored VLM description for an image, or None.
+
+    READ-ONLY and account-scoped: reads the VLM record keyed by
+    (account_id, image_id) via the store. Because the record id embeds the
+    account, a description belonging to another account can never be returned.
+    Best-effort: any failure / missing record / store-unavailable yields None
+    so search never fails when VLM metadata is unavailable (never fabricates).
+    """
+    if not image_id or not account_id:
+        return None
+    store = _get_store()
+    if store is None:
+        return None
+    try:
+        rec = store.get_vlm_by_image_id(image_id, account_id)
+    except Exception as exc:  # noqa: BLE001 - adapter must be robust
+        print(f"[ml_retrieval] vlm description lookup failed: {exc!r}")
+        return None
+    if not rec:
+        return None
+    md = rec.get("metadata") or {}
+    desc = md.get("vlm_description")
+    if isinstance(desc, str) and desc.strip():
+        return desc
+    return None
+
+
 def search_memories(query: str, account_id: str, top_k: int = DEFAULT_MAX_RESULTS) -> List[dict]:
     """
     Run a query against the canonical ml/ retriever and return up to `top_k`
@@ -266,6 +294,10 @@ def search_memories(query: str, account_id: str, top_k: int = DEFAULT_MAX_RESULT
             if key in seen:
                 continue
             seen.add(key)
+        # Phase 3D: attach the account's own stored VLM description (if any)
+        # as an additional, grounded explanation. Best-effort and account-
+        # scoped; never fabricated and never fatal to search.
+        row["vlm_description"] = _vlm_description_for(row.get("image_id"), account_id)
         results.append(row)
         if len(results) >= top_k:
             break
@@ -385,4 +417,7 @@ def to_memory_result_dict(r: dict) -> dict:
         "capturedAt": None,  # retriever has no reliable capture time; do NOT fabricate
         "metadata": metadata or None,
         "explanation": explanation,
+        # Phase 3D: pass through the stored VLM description when present
+        # (already account-scoped in search_memories); None otherwise.
+        "vlmDescription": r.get("vlm_description") or None,
     }

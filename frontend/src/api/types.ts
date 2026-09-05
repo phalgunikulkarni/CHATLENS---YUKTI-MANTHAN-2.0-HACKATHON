@@ -66,6 +66,12 @@ export interface SearchResult {
   metadata?: Record<string, string>;
   /** May be embedded here or fetched separately via getExplanation(). */
   explanation?: ExplanationSignal[];
+  /**
+   * Backend-provided VLM (vision-language model) description of the image,
+   * shown under "Why this result?" for Search Results only. Present only when
+   * the account has a stored description for this image; never fabricated.
+   */
+  vlmDescription?: string;
 }
 
 /** Backend-provided directive for how the Frontend should render an agent turn. */

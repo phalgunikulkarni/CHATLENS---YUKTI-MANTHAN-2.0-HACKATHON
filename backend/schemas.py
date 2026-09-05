@@ -49,6 +49,10 @@ class MemoryResult(BaseModel):
     capturedAt: Optional[str] = None
     metadata: Optional[Dict[str, str]] = None
     explanation: Optional[List[ExplanationSignal]] = None
+    # Phase 3D: optional stored VLM-generated description for this image.
+    # Populated per-result from the account's own VLM record (account-scoped);
+    # null when no description exists. Search never fails if it is unavailable.
+    vlmDescription: Optional[str] = None
 
 class TurnResponse(BaseModel):
     sessionId: str
