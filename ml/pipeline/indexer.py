@@ -119,6 +119,7 @@ class LibraryIndexer:
         self._clip = None
         self._ocr = None
         self._text = None
+        self._vlm = None
         self._retriever = None
 
     # -- lazy, reused singletons ---------------------------------------------
@@ -148,6 +149,12 @@ class LibraryIndexer:
             from ml.embeddings.text_embedder import TextEmbedder
             self._text = TextEmbedder()
         return self._text
+
+    def _vlm_describer(self):
+        if self._vlm is None:
+            from ml.vlm_description import VLMImageDescriber
+            self._vlm = VLMImageDescriber()
+        return self._vlm
 
     # -- discovery via authorized locations (reuses LocalImageAccess) --------
 
@@ -214,6 +221,7 @@ class LibraryIndexer:
         visual = self._clip_embedder().embed_many(to_process)
         ocr = self._ocr_extractor().extract_many(to_process)
         text = self._text_embedder().embed_ocr_results(ocr, filenames=filenames)
+        descriptions = self._vlm_describer().describe_many(to_process)
 
         # Attach change fingerprints + filesystem provenance to the visual
         # records' stored metadata (additive; no schema change, no re-embedding).
@@ -237,6 +245,30 @@ class LibraryIndexer:
         report.visual_indexed = self.store.index_visual_batch(
             visual, account_id=account_id, filenames=filenames, extra_metadata=extra_md)
         report.text_indexed = self.store.index_text_batch(text, account_id=account_id)
+        for item in descriptions:
+            image_id = item["image_id"]
+            self.store.delete_vlm(image_id, account_id)
+            description = item.get("description")
+            if not description:
+                continue
+            embedding = self._text_embedder().embed_text(description)
+            if embedding:
+                path = path_by_id.get(image_id, "")
+                self.store.upsert_vlm_description(
+                    image_id,
+                    account_id,
+                    description,
+                    embedding,
+                    metadata={
+                        "file_path": path,
+                        "filename": filenames.get(image_id),
+                        "category": next(
+                            (getattr(record, "category", "") for record in to_process
+                             if getattr(record, "image_id", None) == image_id),
+                            "",
+                        ),
+                    },
+                )
         report.stats = self.store.stats()
         return report
 
@@ -254,6 +286,7 @@ class LibraryIndexer:
                 image_id = stable_image_id(path)
                 self.store.delete_visual(image_id, account_id)
                 self.store.delete_text(image_id, account_id)
+                self.store.delete_vlm(image_id, account_id)
                 removed += 1
             except Exception:
                 # A missing path or already-removed record must not stop sync.

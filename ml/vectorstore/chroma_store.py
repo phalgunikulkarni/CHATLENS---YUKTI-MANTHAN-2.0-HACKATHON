@@ -31,6 +31,7 @@ from typing import Any, Dict, Iterable, List, Optional
 # Collection names (docs do not mandate specific names; use clear stable ones).
 VISUAL_COLLECTION = "chatlens_visual_embeddings"
 TEXT_COLLECTION = "chatlens_text_embeddings"
+VLM_COLLECTION = "chatlens_vlm_description_embeddings"
 
 # Canonical persistent DB location: <project_root>/chroma_db.
 #
@@ -57,6 +58,11 @@ def text_id(account_id: str, image_id: str) -> str:
     return f"text_{account_id}_{image_id}"
 
 
+def vlm_id(account_id: str, image_id: str) -> str:
+    """Deterministic ChromaDB id for a VLM description record."""
+    return f"vlm_{account_id}_{image_id}"
+
+
 def _clean_metadata(md: Dict[str, Any]) -> Dict[str, Any]:
     """ChromaDB metadata values must be str/int/float/bool (no None)."""
     out: Dict[str, Any] = {}
@@ -78,6 +84,7 @@ class ChromaStore:
         self._client = None
         self._visual = None
         self._text = None
+        self._vlm = None
 
     # -- client / collections -------------------------------------------------
 
@@ -94,6 +101,9 @@ class ChromaStore:
         )
         self._text = self._client.get_or_create_collection(
             name=TEXT_COLLECTION, metadata={"hnsw:space": "cosine"}
+        )
+        self._vlm = self._client.get_or_create_collection(
+            name=VLM_COLLECTION, metadata={"hnsw:space": "cosine"}
         )
         return self
 
@@ -114,6 +124,12 @@ class ChromaStore:
         if self._text is None:
             self.open()
         return self._text
+
+    @property
+    def vlm(self):
+        if self._vlm is None:
+            self.open()
+        return self._vlm
 
     # -- indexing -------------------------------------------------------------
 
@@ -197,6 +213,26 @@ class ChromaStore:
                 count += 1
         return count
 
+    def upsert_vlm_description(
+        self, image_id: str, account_id: str, description: str,
+        embedding: List[float], metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        if not image_id or not account_id or not description or not embedding:
+            return False
+        md = _clean_metadata({
+            "account_id": account_id,
+            "image_id": image_id,
+            "vlm_description": description,
+            "embedding_type": "vlm_description",
+            **(metadata or {}),
+        })
+        self.vlm.upsert(
+            ids=[vlm_id(account_id, image_id)],
+            embeddings=[list(embedding)],
+            metadatas=[md],
+        )
+        return True
+
     # -- lookup / stats (NO similarity search) --------------------------------
 
     def get_visual_by_image_id(self, image_id: str, account_id: str) -> Optional[Dict[str, Any]]:
@@ -205,11 +241,17 @@ class ChromaStore:
     def get_text_by_image_id(self, image_id: str, account_id: str) -> Optional[Dict[str, Any]]:
         return self._get_one(self.text, text_id(account_id, image_id))
 
+    def get_vlm_by_image_id(self, image_id: str, account_id: str) -> Optional[Dict[str, Any]]:
+        return self._get_one(self.vlm, vlm_id(account_id, image_id))
+
     def delete_visual(self, image_id: str, account_id: str) -> None:
         self.visual.delete(ids=[visual_id(account_id, image_id)])
 
     def delete_text(self, image_id: str, account_id: str) -> None:
         self.text.delete(ids=[text_id(account_id, image_id)])
+
+    def delete_vlm(self, image_id: str, account_id: str) -> None:
+        self.vlm.delete(ids=[vlm_id(account_id, image_id)])
 
     @staticmethod
     def _get_one(collection, record_id: str) -> Optional[Dict[str, Any]]:
@@ -228,6 +270,7 @@ class ChromaStore:
         return {
             VISUAL_COLLECTION: self.visual.count(),
             TEXT_COLLECTION: self.text.count(),
+            VLM_COLLECTION: self.vlm.count(),
         }
 
 

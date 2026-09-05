@@ -104,6 +104,12 @@ class TextEmbedder:
         )
         return [float(x) for x in vec.tolist()]
 
+    def embed_text(self, text: str) -> Optional[List[float]]:
+        """Embed one non-empty text using the existing MiniLM pipeline."""
+        if not text or not text.strip():
+            return None
+        return self._encode(text.strip())
+
     def embed_ocr_result(self, ocr_rec: Any, filename: Optional[str] = None) -> TextEmbeddingRecord:
         """Generate a text embedding for a single OCR result record.
 

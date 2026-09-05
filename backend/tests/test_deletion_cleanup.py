@@ -13,6 +13,7 @@ class _Store:
     def __init__(self):
         self.visual_deleted = []
         self.text_deleted = []
+        self.vlm_deleted = []
         self.visual_records = set()
         self.text_records = set()
 
@@ -26,6 +27,9 @@ class _Store:
     def delete_text(self, image_id, account_id):
         self.text_deleted.append((image_id, account_id))
         self.text_records.discard((image_id, account_id))
+
+    def delete_vlm(self, image_id, account_id):
+        self.vlm_deleted.append((image_id, account_id))
 
 
 def test_deleted_path_removes_visual_and_text_for_only_owner(tmp_path):
@@ -43,6 +47,7 @@ def test_deleted_path_removes_visual_and_text_for_only_owner(tmp_path):
     assert indexer.remove_paths([str(path)], account_id="acct-a") == 1
     assert store.visual_deleted == [(image_id, "acct-a")]
     assert store.text_deleted == [(image_id, "acct-a")]
+    assert store.vlm_deleted == [(image_id, "acct-a")]
     assert (image_id, "acct-a") not in store.visual_records
     assert (image_id, "acct-a") not in store.text_records
     assert (image_id, "acct-b") in store.visual_records
