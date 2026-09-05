@@ -37,3 +37,9 @@ PyYAML==6.0.2
 # ReadDirectoryChangesW on Windows). Used only by the watcher/trigger
 # layer; the watcher degrades to a lightweight polling fallback if absent.
 watchdog>=4.0
+
+# --- Telegram source connector (Phase 1) ---
+# Telethon: user-account MTProto client. Reads TELEGRAM_API_ID / TELEGRAM_API_HASH
+# from the environment (never hardcoded/committed). Session files (*.session) are
+# git-ignored. Used ONLY by ml/sources/telegram_source.py.
+telethon>=1.36

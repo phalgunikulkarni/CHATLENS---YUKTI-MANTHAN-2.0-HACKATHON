@@ -51,8 +51,16 @@ ml/vectorstore/chroma_db/
 # Local diagnostic / scratch artifacts
 import_err.txt
 
+# Telegram (Telethon) managed session directory (session files themselves are
+# ignored by the *.session rules below)
+telegram_sessions/
+
 # Local authorized folder roots (server-side access state)
 authorized_locations.json
 backend/authorized_locations.json
 backend/chatlens.db
 backend/chatlens.db.backup
+
+# Telegram local session files
+*.session
+*.session-journal
