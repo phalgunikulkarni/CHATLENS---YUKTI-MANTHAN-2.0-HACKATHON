@@ -47,6 +47,10 @@ class MemoryResult(BaseModel):
     similarity: Optional[int] = None  # 0-100 truthful similarity from real cosine signals
     sourceTag: Optional[str] = None
     capturedAt: Optional[str] = None
+    # BLIP-generated natural-language visual description (from ingestion),
+    # carried through from the stored Chroma visual metadata. None when absent;
+    # never fabricated. Does not affect ranking/similarity/ordering.
+    visualDescription: Optional[str] = None
     metadata: Optional[Dict[str, str]] = None
     explanation: Optional[List[ExplanationSignal]] = None
 

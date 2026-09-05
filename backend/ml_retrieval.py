@@ -148,6 +148,35 @@ def resolve_image_path(image_id: str) -> Optional[str]:
         return None
 
 
+def _stored_visual_description(image_id: str) -> Optional[str]:
+    """Read the BLIP-generated ``visual_description`` for an image_id from the
+    existing Chroma visual metadata. READ-ONLY.
+
+    The description is already persisted during ingestion (indexer) as an
+    additive key on the visual record's metadata. Retrieval does not surface it,
+    so we look it up here by the result's image_id. Returns None when there is
+    no stored description (never fabricates), and swallows any store error.
+    """
+    if not image_id:
+        return None
+    store = _get_store()
+    if store is None:
+        return None
+    try:
+        rec = store.get_visual_by_image_id(image_id)
+    except Exception as exc:  # noqa: BLE001 - adapter must be robust
+        print(f"[ml_retrieval] visual_description lookup failed: {exc!r}")
+        return None
+    if not rec:
+        return None
+    md = rec.get("metadata") or {}
+    desc = md.get("visual_description")
+    if isinstance(desc, str):
+        desc = desc.strip()
+        return desc or None
+    return None
+
+
 def list_memories(limit: int = 200) -> List[dict]:
     """List indexed memories from the canonical Chroma visual collection.
 
@@ -181,6 +210,7 @@ def list_memories(limit: int = 200) -> List[dict]:
                 "extracted_text": md.get("extracted_text"),
                 "absolute_path": md.get("absolute_path"),
                 "file_path": md.get("file_path"),
+                "visual_description": md.get("visual_description"),
                 "modality": None,
                 "reason": None,
                 "visual_score": None,
@@ -270,6 +300,11 @@ def search_memories(query: str, top_k: int = DEFAULT_MAX_RESULTS) -> List[dict]:
             if key in seen:
                 continue
             seen.add(key)
+        # Attach the stored BLIP visual_description (read-only lookup by
+        # image_id) for the results we actually keep. Retrieval/ranking/order
+        # are untouched; this only enriches the kept rows. Done after dedup so
+        # dropped duplicates cost no lookup.
+        row["visual_description"] = _stored_visual_description(row.get("image_id"))
         results.append(row)
         if len(results) >= top_k:
             break
@@ -348,6 +383,12 @@ def to_memory_result_dict(r: dict) -> dict:
     extracted_text = r.get("extracted_text")
     score = r.get("score")
 
+    # BLIP visual description (already stored in Chroma visual metadata during
+    # ingestion). Passed through as-is; None/empty when there is none (never
+    # fabricated). This does not affect ranking, similarity, or ordering.
+    vd = r.get("visual_description")
+    visual_description = vd.strip() if isinstance(vd, str) and vd.strip() else None
+
     # metadata: build ONLY from present values; stringify numbers; omit missing.
     metadata: dict = {}
     modality = r.get("modality")
@@ -387,6 +428,7 @@ def to_memory_result_dict(r: dict) -> dict:
         "similarity": _similarity_percent(modality, visual_score, text_score),
         "sourceTag": r.get("category") or None,
         "capturedAt": None,  # retriever has no reliable capture time; do NOT fabricate
+        "visualDescription": visual_description,
         "metadata": metadata or None,
         "explanation": explanation,
     }

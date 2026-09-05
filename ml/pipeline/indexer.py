@@ -117,6 +117,7 @@ class LibraryIndexer:
         self._clip = None
         self._ocr = None
         self._text = None
+        self._vlm = None
         self._retriever = None
 
     # -- lazy, reused singletons ---------------------------------------------
@@ -146,6 +147,23 @@ class LibraryIndexer:
             from ml.embeddings.text_embedder import TextEmbedder
             self._text = TextEmbedder()
         return self._text
+
+    def _vlm_describer(self):
+        """Lazily construct ONE reused VLMImageDescriber (BLIP) for the batch.
+
+        Additive image-understanding only; independent of CLIP/OCR/text. Loaded
+        lazily so importing the indexer stays cheap and BLIP loads only when
+        indexing actually runs. Construction failure returns None so BLIP is
+        simply skipped (CLIP/OCR/text indexing still proceeds).
+        """
+        if self._vlm is None:
+            try:
+                from ml.vlm_description import VLMImageDescriber
+                self._vlm = VLMImageDescriber()
+            except Exception as exc:  # noqa: BLE001 - BLIP is optional/additive
+                print(f"[indexer] VLM describer unavailable: {exc!r}")
+                return None
+        return self._vlm
 
     # -- discovery via authorized locations (reuses LocalImageAccess) --------
 
@@ -231,6 +249,31 @@ class LibraryIndexer:
                 "absolute_path": abs_path,
                 "source_root": src_root,
             }
+
+        # ADDITIVE: BLIP visual description per image. Runs AFTER CLIP/OCR/text
+        # (their behavior is untouched) using ONE reused describer for the whole
+        # batch. Failures are isolated: a describer that is unavailable, or any
+        # per-image description failure, simply omits `visual_description` for
+        # that image and NEVER aborts CLIP/OCR/text indexing. The description is
+        # merged into the SAME visual metadata dict keyed by the correct
+        # image_id, so no new collection/schema is introduced; empty/None
+        # descriptions are dropped by ChromaStore's metadata cleaner.
+        describer = self._vlm_describer()
+        if describer is not None:
+            for rec in to_process:
+                iid = getattr(rec, "image_id", None)
+                if iid is None:
+                    continue
+                fpath = path_by_id.get(iid, "")
+                if not fpath:
+                    continue
+                try:
+                    description = describer.describe_one(fpath)
+                except Exception as exc:  # noqa: BLE001 - never abort the job
+                    print(f"[indexer] VLM description failed for {iid}: {exc!r}")
+                    description = None
+                if description:
+                    extra_md.setdefault(iid, {})["visual_description"] = description
 
         report.visual_indexed = self.store.index_visual_batch(
             visual, filenames=filenames, extra_metadata=extra_md)

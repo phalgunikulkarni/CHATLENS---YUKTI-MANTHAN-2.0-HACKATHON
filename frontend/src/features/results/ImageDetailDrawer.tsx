@@ -77,6 +77,13 @@ export function ImageDetailDrawer({ result, selected, onClose, onToggleSelect, o
           </div>
         )}
 
+        {hasText(result.visualDescription) && (
+          <div className="drawer-section">
+            <div className="section-title" style={{ fontSize: 12 }}>Visual description</div>
+            <div className="ocr-box">{result.visualDescription}</div>
+          </div>
+        )}
+
         {metaEntries.length > 0 && (
           <div className="drawer-section">
             <div className="section-title" style={{ fontSize: 12 }}>Metadata</div>

@@ -48,6 +48,12 @@ export interface SearchResult {
   description?: string;
   category?: MemoryCategory;
   ocrSnippet?: string;
+  /**
+   * BLIP-generated natural-language visual description of the image, supplied
+   * by the Backend during ingestion. Supplementary context only (never the
+   * "Why this result?" explanation). null/undefined/empty -> render nothing.
+   */
+  visualDescription?: string | null;
   /** Supporting context only - never the sole explanation. */
   matchScore?: number;
   /**
