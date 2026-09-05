@@ -358,3 +358,242 @@ def _on_shutdown():
         access_service.shutdown()
     except Exception as e:  # noqa: BLE001
         print(f"[access] shutdown failed: {e}")
+
+# ---------------------------------------------------------------------------
+    raw = _search_for_account(request.message, account, top_k=10)
+    results = [_build_memory_result(r) for r in raw]
+
+    clue_dicts = [c.model_dump() for c in request.activeClues]
+    chat_repo.append_refine_turn(
+        db, account, request.sessionId, request.message, clue_dicts, raw
+    )
+
+    return TurnResponse(
+        sessionId=request.sessionId,
+        intent="refinement",
+        agentMessage=f"Refined search. {len(results)} memories.",
+        clues=request.activeClues,  # echo back active clues unchanged
+        results=results,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Account-scoped chat CRUD (Phase B). All via Depends(resolve_account); each
+# returns explicit 403/404 for cross-account/missing sessions (never 200-empty).
+# ---------------------------------------------------------------------------
+
+@app.post("/api/chats", response_model=ConversationSummary)
+def create_chat(
+    request: CreateChat = CreateChat(),
+    account: str = Depends(resolve_account),
+    db: Session = Depends(get_db),
+):
+    session_id = chat_repo.create_conversation(db, account, title=request.title)
+    detail = chat_repo.get_conversation(db, account, session_id)
+    return ConversationSummary(
+        sessionId=detail["sessionId"],
+        title=detail["title"],
+        createdAt=detail["createdAt"],
+        updatedAt=detail["updatedAt"],
+    )
+
+
+@app.get("/api/chats", response_model=List[ConversationSummary])
+def list_chats(account: str = Depends(resolve_account), db: Session = Depends(get_db)):
+    return [ConversationSummary(**s) for s in chat_repo.list_conversations(db, account)]
+
+
+@app.get("/api/chats/{session_id}", response_model=ConversationDetail)
+def get_chat(
+    session_id: str,
+    account: str = Depends(resolve_account),
+    db: Session = Depends(get_db),
+):
+    return ConversationDetail(**chat_repo.get_conversation(db, account, session_id))
+
+
+@app.patch("/api/chats/{session_id}", response_model=ConversationSummary)
+def rename_chat(
+    session_id: str,
+    request: CreateChat,
+    account: str = Depends(resolve_account),
+    db: Session = Depends(get_db),
+):
+    return ConversationSummary(**chat_repo.rename_conversation(db, account, session_id, request.title))
+
+
+@app.delete("/api/chats/{session_id}")
+def delete_chat(
+    session_id: str,
+    account: str = Depends(resolve_account),
+    db: Session = Depends(get_db),
+):
+    chat_repo.delete_conversation(db, account, session_id)
+    return {"deleted": session_id}
+
+
+@app.get("/api/results/{result_id}/explanation", response_model=List[ExplanationSignal])
+def get_explanation(result_id: str):
+    # Explanations are grounded in real retrieval evidence. Without a query
+    # context we cannot produce grounded signals for a stored image id, so we
+    # return an empty list (frontend shows an "explanation not available" state).
+    # Do NOT fabricate signals.
+    signals = ml_retrieval.explanation_signals_for(result_id)  # returns [] (grounded-only)
+    return [ExplanationSignal(**s) for s in signals]
+
+
+@app.post("/api/actions/summarize", response_model=SummaryResponseBody)
+def summarize_images(request: SummarizeRequestBody):
+    return SummaryResponseBody(
+        sessionId=request.sessionId,
+        summary=(
+            "Summarization requires the retrieval/LLM service, which is not "
+            f"connected yet. {len(request.imageIds)} memories were selected."
+        ),
+        usedImageIds=request.imageIds,
+    )
+
+
+@app.post("/api/actions/roadmap", response_model=RoadmapResponseBody)
+def generate_roadmap(request: RoadmapRequestBody):
+    # Real generation is not connected; return an empty steps list. Do NOT
+    # fabricate roadmap content.
+    return RoadmapResponseBody(sessionId=request.sessionId, steps=[])
+
+
+@app.post("/api/images", response_model=ImageStatus)
+def upload_image(
+    file: UploadFile = File(...),
+    source: str = Form(None),
+    db: Session = Depends(get_db),
+):
+    # Store the uploaded file + create the Image row (processing_status="pending").
+    # Canonical retrieval/indexing is handled by the ml/ Chroma pipeline, not
+    # the FAISS processing pipeline, so we do NOT trigger the FAISS background task.
+    db_image = ingestion.save_uploaded_image(db, file, source)
+    return ImageStatus(
+        imageId=db_image.id,
+        status=_status_to_frontend(db_image.processing_status),
+    )
+
+
+@app.get("/api/images/{image_id}/status", response_model=ImageStatus)
+def get_image_status(
+    image_id: str,
+    db: Session = Depends(get_db),
+    account: str = Depends(resolve_account),
+):
+    r = db.query(models.Image).filter(models.Image.id == image_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return ImageStatus(
+        imageId=image_id,
+        status=_status_to_frontend(r.processing_status),
+    )
+
+
+@app.get("/api/images/{image_id}/file")
+def get_image_file(image_id: str, account: str = Depends(resolve_account)):
+    # Read-only serving of an already-indexed local image, resolved from the
+    # canonical ML/Chroma record by its path-hash id. Never accepts a client
+    # path; resolve_image_path validates existence, image type, and that the
+    # file is within its authorized indexed location.
+    path = ml_retrieval.resolve_image_path(image_id, account_id=account)
+    if not path:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(path)
+
+
+@app.get("/api/library", response_model=List[MemoryResult])
+def list_library(account: str = Depends(resolve_account)):
+    # Strictly read-only over the existing Chroma index. Does NOT scan,
+    # ingest, embed, or index. Returns [] honestly when empty/unavailable.
+    raw = ml_retrieval.list_memories(account_id=account)
+    return [_build_memory_result(r) for r in raw]
+
+
+@app.post("/api/access/grant", response_model=AccessGrantResult)
+def access_grant(account: str = Depends(resolve_account)):
+    # Opens the native folder picker, validates + persists authorized roots,
+    # and kicks off background initial indexing. "authorized" here means the
+    # authorization was accepted / indexing started; the frontend polls
+    # /api/access/status for the "ready" state.
+    r = access_service.grant_access(account)
+    return AccessGrantResult(
+        authorized=bool(r.get("authorized")),
+        roots=r.get("roots", []),
+        message=r.get("message", ""),
+    )
+
+
+@app.get("/api/access/status", response_model=AccessStatus)
+def access_status(account: str = Depends(resolve_account)):
+    s = access_service.get_status(account)
+    return AccessStatus(
+        authorized=bool(s.get("authorized")),
+        indexing=s.get("indexing", "idle"),
+        roots=s.get("roots", []),
+        indexedCount=int(s.get("indexedCount", 0)),
+        error=s.get("error"),
+    )
+
+
+@app.on_event("startup")
+def _on_startup():
+    # Restore persisted authorization and restart the watcher (no full re-index).
+    try:
+        access_service.restore_on_startup()
+    except Exception as e:  # noqa: BLE001 - startup must never crash the app
+        print(f"[access] restore failed: {e}")
+
+
+@app.on_event("shutdown")
+def _on_shutdown():
+    try:
+        access_service.shutdown()
+    except Exception as e:  # noqa: BLE001
+        print(f"[access] shutdown failed: {e}")
+
+# ---------------------------------------------------------------------------
+# Google Photos Auth & Sync
+# ---------------------------------------------------------------------------
+from connectors.google.google_auth import get_auth_url, exchange_code
+from connectors.google.google_sync import run_sync_job
+
+from fastapi import Header
+import re
+ACCOUNT_RE = re.compile(r"^acct-[0-9a-f]+$")
+
+def resolve_test_account(x_account_id: str | None = Header(default=None, alias="x-account-id")) -> str:
+    if not x_account_id or not ACCOUNT_RE.match(x_account_id):
+        return "test_user"
+    return x_account_id
+
+@app.get("/api/connectors/google/login")
+def google_login(account: str = Depends(resolve_test_account)):
+    try:
+        url = get_auth_url(account)
+        return {"auth_url": url}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/connectors/google/callback")
+def google_callback(code: str, state: str, account: str = Depends(resolve_test_account)):
+    try:
+        exchange_code(code, state)
+        return {"status": "success", "message": "Google Photos connected successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+from pydantic import BaseModel
+class GoogleSyncRequest(BaseModel):
+    account_id: str
+
+@app.post("/api/connectors/google/sync")
+def google_sync(request: GoogleSyncRequest, account: str = Depends(resolve_test_account), db: Session = Depends(get_db)):
+    try:
+        # Override the request's account_id with the resolved/defaulted account
+        result = run_sync_job(account, db)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

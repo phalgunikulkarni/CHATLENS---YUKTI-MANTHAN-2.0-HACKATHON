@@ -1,6 +1,15 @@
 from sqlalchemy import Column, String, DateTime, Integer, ForeignKey
 from database import Base
 
+class Connector(Base):
+    __tablename__ = "connectors"
+    
+    id = Column(String, primary_key=True)
+    user_phone = Column(String, unique=True, index=True) # Used as account_id
+    connector_type = Column(String)
+    status = Column(String)
+    last_sync_message_id = Column(Integer, nullable=True)
+
 class Image(Base):
     __tablename__ = "images"
 
@@ -21,6 +30,9 @@ class Image(Base):
     # Chroma account_id tag; this column exists so GET /api/images/{id}/status can
     # be scoped in a later phase. Left NULL for pre-existing rows (never fabricated).
     account_id = Column(String, nullable=True, index=True)
+    
+    source_type = Column(String, default='local')
+    source_metadata = Column(String, nullable=True)
 
 class ImageText(Base):
     __tablename__ = "image_texts"

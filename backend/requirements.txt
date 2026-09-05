@@ -10,3 +10,7 @@ torch
 sentence-transformers
 numpy
 # ML retrieval (ml/) additionally requires paddleocr, paddlepaddle, chromadb per ml/requirements.txt
+
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
