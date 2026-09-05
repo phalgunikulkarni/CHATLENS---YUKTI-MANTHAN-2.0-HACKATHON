@@ -557,12 +557,22 @@ def _on_shutdown():
 # ---------------------------------------------------------------------------
 # Google Photos Auth & Sync
 # ---------------------------------------------------------------------------
-from connectors.google.google_auth import get_auth_url, exchange_code
+from connectors.google.google_auth import (
+    get_auth_url,
+    exchange_code,
+    get_credentials,
+    GoogleAuthError,
+)
 from connectors.google.google_sync import run_sync_job
+from models import Connector
 
 from fastapi import Header
+from fastapi.responses import RedirectResponse
 import re
 ACCOUNT_RE = re.compile(r"^acct-[0-9a-f]+$")
+
+# Frontend origin the OAuth callback redirects back to after connecting.
+FRONTEND_ORIGIN = os.environ.get("CHATLENS_FRONTEND_ORIGIN", "http://localhost:5173")
 
 def resolve_test_account(x_account_id: str | None = Header(default=None, alias="x-account-id")) -> str:
     if not x_account_id or not ACCOUNT_RE.match(x_account_id):
@@ -570,30 +580,77 @@ def resolve_test_account(x_account_id: str | None = Header(default=None, alias="
     return x_account_id
 
 @app.get("/api/connectors/google/login")
-def google_login(account: str = Depends(resolve_test_account)):
+def google_login(account: str = Depends(resolve_test_account), db: Session = Depends(get_db)):
     try:
-        url = get_auth_url(account)
+        url = get_auth_url(account, db)
         return {"auth_url": url}
-    except Exception as e:
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/connectors/google/callback")
-def google_callback(code: str, state: str, account: str = Depends(resolve_test_account)):
+def google_callback(code: str, state: str, db: Session = Depends(get_db)):
+    # The real account is resolved from the single-use state — NOT from any
+    # frontend-supplied value. On success, redirect back to the frontend; never
+    # return tokens.
     try:
-        exchange_code(code, state)
-        return {"status": "success", "message": "Google Photos connected successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        account_id = exchange_code(code, state, db)
+    except GoogleAuthError:
+        return RedirectResponse(
+            url=f"{FRONTEND_ORIGIN}/?connector=google&status=error",
+            status_code=302,
+        )
+    except Exception:  # noqa: BLE001
+        return RedirectResponse(
+            url=f"{FRONTEND_ORIGIN}/?connector=google&status=error",
+            status_code=302,
+        )
+
+    # Mark the connector connected for the resolved account.
+    connector = db.query(Connector).filter(Connector.user_phone == account_id).first()
+    if not connector:
+        connector = Connector(
+            id=str(uuid.uuid4()),
+            user_phone=account_id,
+            connector_type="google",
+            status="connected",
+            last_sync_message_id=0,
+        )
+        db.add(connector)
+    else:
+        connector.status = "connected"
+    db.commit()
+
+    return RedirectResponse(
+        url=f"{FRONTEND_ORIGIN}/?connector=google&status=connected",
+        status_code=302,
+    )
 
 from pydantic import BaseModel
 class GoogleSyncRequest(BaseModel):
-    account_id: str
+    account_id: str | None = None
+    limit: int | None = None
 
 @app.post("/api/connectors/google/sync")
 def google_sync(request: GoogleSyncRequest, account: str = Depends(resolve_test_account), db: Session = Depends(get_db)):
+    # Ignore any frontend-supplied account_id; use the resolved account only.
     try:
-        # Override the request's account_id with the resolved/defaulted account
-        result = run_sync_job(account, db)
+        result = run_sync_job(account, db, limit=request.limit)
         return result
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/connectors/google/status")
+def google_status(account: str = Depends(resolve_test_account), db: Session = Depends(get_db)):
+    connector = db.query(Connector).filter(Connector.user_phone == account).first()
+    has_creds = False
+    try:
+        has_creds = get_credentials(account) is not None
+    except GoogleAuthError:
+        has_creds = False
+    return {
+        "connector_type": "google",
+        "status": connector.status if connector else "disconnected",
+        "authorized": has_creds,
+    }

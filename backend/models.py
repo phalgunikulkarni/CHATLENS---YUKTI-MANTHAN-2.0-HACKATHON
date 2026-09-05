@@ -10,6 +10,22 @@ class Connector(Base):
     status = Column(String)
     last_sync_message_id = Column(Integer, nullable=True)
 
+
+class OAuthState(Base):
+    """Single-use, server-side OAuth state token for the Google Photos flow.
+
+    Replaces the previous INSECURE pattern of using the account_id directly as
+    the OAuth `state`. A cryptographically-random state is minted per login,
+    mapped to the resolved account, and consumed exactly once at callback time.
+    Additive table — does not affect Telegram/local or any existing table.
+    """
+    __tablename__ = "oauth_states"
+
+    state = Column(String, primary_key=True)
+    account_id = Column(String, index=True)
+    created_at = Column(DateTime)
+    used = Column(Integer, default=0)  # 0 = unused, 1 = consumed (single-use)
+
 class Image(Base):
     __tablename__ = "images"
 

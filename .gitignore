@@ -56,3 +56,8 @@ authorized_locations.json
 backend/authorized_locations.json
 backend/chatlens.db
 backend/chatlens.db.backup
+
+backend/client_secret.json
+
+# Google Photos: stored OAuth tokens + downloaded user images (NEVER commit)
+backend/storage/
