@@ -8,9 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-import models
-from database import engine, SessionLocal
-from schemas import (
+import backend.models as models
+from backend.database import engine, SessionLocal
+from backend.schemas import (
     MemoryResult,
     ExplanationSignal,
     TurnResponse,
@@ -29,12 +29,12 @@ from schemas import (
     ConversationSummary,
     ConversationDetail,
 )
-import ingestion
-import ml_retrieval
-import access_service
-import chat_repo
-import db_init
-from account import resolve_account
+import backend.ingestion as ingestion
+import backend.ml_retrieval as ml_retrieval
+import backend.access_service as access_service
+import backend.chat_repo as chat_repo
+import backend.db_init as db_init
+from backend.account import resolve_account
 
 # Create tables in SQLite (creates the new search_result_refs table and, for a
 # fresh DB, the new account_id/title columns).
