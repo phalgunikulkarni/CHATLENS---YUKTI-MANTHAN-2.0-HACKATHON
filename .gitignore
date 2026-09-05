@@ -54,3 +54,5 @@ import_err.txt
 # Local authorized folder roots (server-side access state)
 authorized_locations.json
 backend/authorized_locations.json
+backend/chatlens.db
+backend/chatlens.db.backup
