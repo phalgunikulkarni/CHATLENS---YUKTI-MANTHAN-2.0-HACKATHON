@@ -4,6 +4,7 @@ import { deriveAltText } from "../../utils/altText";
 import { formatDate, CATEGORY_LABEL } from "../../utils/format";
 import { Icon } from "../../components/Icon";
 import { SourceBadge } from "../../components/SourceBadge";
+import { ProtectedImage } from "../../components/ProtectedImage";
 
 interface Props {
   result: SearchResult;
@@ -26,7 +27,7 @@ export function MemoryCard({ result, selected, view, onToggleSelect, onOpen, onW
         aria-label={selected ? "Deselect memory" : "Select memory"}
         style={{ border: "none", padding: 0, cursor: "pointer" }}
       >
-        <img src={result.thumbnailUrl} alt={deriveAltText(result)} loading="lazy" />
+        <ProtectedImage src={result.thumbnailUrl} alt={deriveAltText(result)} loading="lazy" />
         <span className="select-tick"><Icon name="check" size={16} /></span>
       </button>
       <div className="card-body">

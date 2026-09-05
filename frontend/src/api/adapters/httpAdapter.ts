@@ -159,4 +159,10 @@ export class HttpAdapter implements ApiService {
       fullUrl: this.absolutize(it.fullUrl),
     }));
   }
+
+  async getImageBlob(url: string): Promise<Blob> {
+    const res = await fetch(url, { headers: this.withAccount({}) });
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+    return res.blob();
+  }
 }

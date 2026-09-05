@@ -5,6 +5,7 @@ import { deriveAltText } from "../../utils/altText";
 import { formatDate } from "../../utils/format";
 import { useFocusTrap } from "../../hooks";
 import { Icon } from "../../components/Icon";
+import { ProtectedImage } from "../../components/ProtectedImage";
 import { RetrievalSignals } from "../explanation/RetrievalSignals";
 import { ImageChat } from "./ImageChat";
 
@@ -42,7 +43,7 @@ export function ImageDetailDrawer({ result, selected, onClose, onToggleSelect, o
           </button>
         </div>
 
-        <img className="drawer-img" src={result.fullUrl ?? result.thumbnailUrl} alt={deriveAltText(result)} />
+        <ProtectedImage className="drawer-img" src={result.fullUrl ?? result.thumbnailUrl} alt={deriveAltText(result)} />
 
         <div className="drawer-section">
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>

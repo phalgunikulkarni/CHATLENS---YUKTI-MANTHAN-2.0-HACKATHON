@@ -44,6 +44,7 @@ export class NotConnectedAdapter implements ApiService {
   async deleteChat(_sessionId: string): Promise<void> { this.fail(); }
   async renameChat(_sessionId: string, _title: string): Promise<ConversationSummary> { this.fail(); }
   async listLibrary(): Promise<SearchResult[]> { this.fail(); }
+  async getImageBlob(_url: string): Promise<Blob> { this.fail(); }
   async grantAccess(): Promise<AccessGrantResult> { this.fail(); }
   async getAccessStatus(): Promise<AccessStatus> { this.fail(); }
 }

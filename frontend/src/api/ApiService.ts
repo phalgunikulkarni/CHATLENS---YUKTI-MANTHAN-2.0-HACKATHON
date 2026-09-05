@@ -47,6 +47,8 @@ export interface ApiService {
   renameChat(sessionId: string, title: string): Promise<ConversationSummary>;
   /** Read-only list of the user's canonical indexed memories (ML/Chroma). */
   listLibrary(): Promise<SearchResult[]>;
+  /** Fetch an account-protected image using the adapter's authenticated headers. */
+  getImageBlob(url: string): Promise<Blob>;
   /** Open the native local folder picker (server-side) and start indexing. */
   grantAccess(): Promise<AccessGrantResult>;
   /** Poll authorization + indexing status. */

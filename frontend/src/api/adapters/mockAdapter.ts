@@ -255,6 +255,12 @@ export class MockAdapter implements ApiService {
     await this.simulate();
     return { confirmed: true };
   }
+  async getImageBlob(url: string): Promise<Blob> {
+    await this.simulate();
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
+    return response.blob();
+  }
   // ---- Account-scoped chat persistence (SYNTHETIC in-memory) ----
   private summaryOf(d: ConversationDetail): ConversationSummary {
     return { sessionId: d.sessionId, title: d.title, createdAt: d.createdAt, updatedAt: d.updatedAt };

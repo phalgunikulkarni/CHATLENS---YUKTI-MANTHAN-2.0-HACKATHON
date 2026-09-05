@@ -1,5 +1,6 @@
 import type { SearchResult, SummaryResponse } from "../../api/types";
 import { Icon } from "../../components/Icon";
+import { ProtectedImage } from "../../components/ProtectedImage";
 
 interface Props {
   summary: SummaryResponse;
@@ -32,7 +33,7 @@ export function SummaryPanel({ summary, resultItems, onRoadmap }: Props) {
         {sources.length > 0 && (
           <div className="source-thumbs" aria-label="Source memories">
             {sources.map((s) => (
-              <img key={s.id} src={s.thumbnailUrl} alt={s.title ?? "Source memory"} />
+              <ProtectedImage key={s.id} src={s.thumbnailUrl} alt={s.title ?? "Source memory"} />
             ))}
           </div>
         )}
