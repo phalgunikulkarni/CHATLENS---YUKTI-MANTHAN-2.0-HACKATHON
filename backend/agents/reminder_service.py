@@ -99,3 +99,23 @@ class ReminderService:
             self._scheduler.shutdown(wait=False)
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Shared process-lifetime scheduler singleton.
+#
+# This is SHARED INFRASTRUCTURE (not a functional agent). Calendar event
+# reminders use it via calendar_tasks/reminders.py. The functional Reminder
+# agent was removed in the five-agent alignment; this accessor previously lived
+# in reminder_agent.py and was moved here so the scheduler survives without the
+# agent module.
+# ---------------------------------------------------------------------------
+_SHARED_SERVICE: Optional["ReminderService"] = None
+
+
+def get_shared_service() -> "ReminderService":
+    """Return the shared process-wide ReminderService (lazily created)."""
+    global _SHARED_SERVICE
+    if _SHARED_SERVICE is None:
+        _SHARED_SERVICE = ReminderService()
+    return _SHARED_SERVICE

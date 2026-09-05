@@ -98,10 +98,12 @@ def test_G_no_ocr_controlled_non_hallucinating():
     assert r["data"]["summary"] is None  # nothing invented
 
 
-def test_J_six_agents_registered_no_seventh():
+def test_J_five_agents_registered_no_reminder():
     ids = set(build_default_registry().ids())
-    assert ids == {"summarize", "add_calendar", "add_task", "reminder", "analyze_bill", "research"}
-    assert AGENT_IDS == ("summarize", "add_calendar", "add_task", "reminder", "analyze_bill", "research")
+    assert ids == {"summarize", "add_calendar", "add_task", "analyze_bill", "research"}
+    assert AGENT_IDS == ("summarize", "add_calendar", "add_task", "analyze_bill", "research")
+    # Reminder is no longer a functional agent.
+    assert build_default_registry().get("reminder") is None
     # No related-memories agent exists.
     assert build_default_registry().get("related") is None
     assert build_default_registry().get("related_memories") is None

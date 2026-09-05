@@ -101,7 +101,7 @@ def test_f_retrieval_seam_reused(monkeypatch):
     assert rows == [{"image_id": "abc", "q": "penguins", "k": 3}]
 
 
-def test_agent_ids_are_the_six_functional_agents():
+def test_agent_ids_are_the_five_functional_agents():
     assert AGENT_IDS == (
-        "summarize", "add_calendar", "add_task", "reminder", "analyze_bill", "research",
+        "summarize", "add_calendar", "add_task", "analyze_bill", "research",
     )

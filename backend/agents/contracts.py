@@ -19,7 +19,6 @@ AGENT_IDS = (
     "summarize",
     "add_calendar",
     "add_task",
-    "reminder",
     "analyze_bill",
     "research",
 )
@@ -53,7 +52,7 @@ class AgentResult:
     A small, uniform envelope (`ok`, `agent`, `message`, `error`, `metadata`)
     wrapping an agent-specific free-form `data` dict, plus optional grounded
     `evidence` (e.g. source image_ids / references). This supports the very
-    different outputs of summarize / calendar / task / reminder / bill / research
+    different outputs of summarize / calendar / task / bill / research
     without forcing an unnatural identical payload.
     """
 
@@ -94,7 +93,7 @@ class AgentError(Exception):
 
 
 class Agent(abc.ABC):
-    """Base class for the six functional agents.
+    """Base class for the five functional agents.
 
     Subclasses set `id` (one of AGENT_IDS) and `description`, and implement
     `run(context) -> AgentResult`. Subclasses should raise AgentError (or return
