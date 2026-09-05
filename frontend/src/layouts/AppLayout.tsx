@@ -11,6 +11,7 @@ const TITLES: Record<ViewName, string> = {
   search: "Visual memory search",
   library: "Your memory library",
   connectors: "Connect your memories",
+  history: "Search history",
 };
 
 export function AppLayout({ children }: { children: ReactNode }) {

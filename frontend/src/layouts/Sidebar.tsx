@@ -8,6 +8,7 @@ const NAV: { view: ViewName; label: string; icon: IconName }[] = [
   { view: "search", label: "Search", icon: "search" },
   { view: "library", label: "Memories", icon: "library" },
   { view: "connectors", label: "Connectors", icon: "layers" },
+  { view: "history", label: "Search History", icon: "history" },
 ];
 
 interface Props {

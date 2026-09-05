@@ -56,7 +56,7 @@ export interface Toast {
   tone: ToastTone;
 }
 
-export type ViewName = "search" | "library" | "connectors";
+export type ViewName = "search" | "library" | "connectors" | "history";
 
 export interface SearchHistoryEntry {
   id: string;
