@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useConversations, useDispatch, useOnlineStatus, useUi } from "../hooks";
 import { useChatLens } from "../hooks/useChatLens";
+import { useBrowserHistorySync } from "../hooks/useBrowserHistorySync";
 import type { ViewName } from "../state/types";
 import { Sidebar } from "./Sidebar";
 import { Icon } from "../components/Icon";
@@ -18,6 +19,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const c = useChatLens();
   const dispatch = useDispatch();
   const online = useOnlineStatus();
+  // Bridge state-driven navigation to the browser history stack (Back/Forward).
+  useBrowserHistorySync();
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
