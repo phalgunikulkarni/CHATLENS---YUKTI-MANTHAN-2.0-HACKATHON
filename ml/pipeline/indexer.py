@@ -221,7 +221,6 @@ class LibraryIndexer:
         visual = self._clip_embedder().embed_many(to_process)
         ocr = self._ocr_extractor().extract_many(to_process)
         text = self._text_embedder().embed_ocr_results(ocr, filenames=filenames)
-        descriptions = self._vlm_describer().describe_many(to_process)
 
         # Attach change fingerprints + filesystem provenance to the visual
         # records' stored metadata (additive; no schema change, no re-embedding).
@@ -245,30 +244,38 @@ class LibraryIndexer:
         report.visual_indexed = self.store.index_visual_batch(
             visual, account_id=account_id, filenames=filenames, extra_metadata=extra_md)
         report.text_indexed = self.store.index_text_batch(text, account_id=account_id)
+
+        # Optional VLM stage. Normal visual/text indexing is complete before
+        # this stage begins, and VLM failures never affect the index report.
+        try:
+            descriptions = self._vlm_describer().describe_many(to_process)
+        except Exception:
+            descriptions = []
+        records_by_id = {getattr(record, "image_id", None): record for record in to_process}
         for item in descriptions:
-            image_id = item["image_id"]
-            self.store.delete_vlm(image_id, account_id)
-            description = item.get("description")
-            if not description:
-                continue
-            embedding = self._text_embedder().embed_text(description)
-            if embedding:
-                path = path_by_id.get(image_id, "")
+            try:
+                image_id = item["image_id"]
+                self.store.delete_vlm(image_id, account_id)
+                description = item.get("description")
+                if not description:
+                    continue
+                embedding = self._text_embedder().embed_text(description)
+                if not embedding:
+                    continue
+                record = records_by_id.get(image_id)
                 self.store.upsert_vlm_description(
                     image_id,
                     account_id,
                     description,
                     embedding,
                     metadata={
-                        "file_path": path,
+                        "file_path": path_by_id.get(image_id, ""),
                         "filename": filenames.get(image_id),
-                        "category": next(
-                            (getattr(record, "category", "") for record in to_process
-                             if getattr(record, "image_id", None) == image_id),
-                            "",
-                        ),
+                        "category": getattr(record, "category", "") if record else "",
                     },
                 )
+            except Exception:
+                continue
         report.stats = self.store.stats()
         return report
 

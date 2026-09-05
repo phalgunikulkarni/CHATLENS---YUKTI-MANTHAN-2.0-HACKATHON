@@ -22,21 +22,27 @@ class VLMImageDescriber:
         self._model = None
         self._torch = None
         self._device = None
+        self._load_failed = False
 
-    def _ensure_loaded(self) -> None:
+    def _ensure_loaded(self) -> bool:
         if self._model is not None:
-            return
+            return True
+        if self._load_failed:
+            return False
         try:
             import torch
             from transformers import BlipForConditionalGeneration, BlipProcessor
-        except Exception as exc:
-            raise RuntimeError(f"VLM dependencies unavailable: {exc}") from exc
-
-        self._torch = torch
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
-        self._processor = BlipProcessor.from_pretrained(self.model_name)
-        self._model = BlipForConditionalGeneration.from_pretrained(self.model_name).to(self._device)
-        self._model.eval()
+            self._torch = torch
+            self._device = "cuda" if torch.cuda.is_available() else "cpu"
+            self._processor = BlipProcessor.from_pretrained(self.model_name)
+            self._model = BlipForConditionalGeneration.from_pretrained(self.model_name).to(self._device)
+            self._model.eval()
+            return True
+        except Exception:
+            self._load_failed = True
+            self._processor = None
+            self._model = None
+            return False
 
     def describe_one(self, image_id: str, file_path: str, category: str = "") -> Optional[str]:
         path = Path(file_path)
@@ -46,7 +52,8 @@ class VLMImageDescriber:
             from PIL import Image
             with Image.open(path) as image:
                 image = image.convert("RGB")
-                self._ensure_loaded()
+                if not self._ensure_loaded():
+                    return None
                 inputs = self._processor(images=image, text=_PROMPT, return_tensors="pt")
                 inputs = {key: value.to(self._device) for key, value in inputs.items()}
                 with self._torch.no_grad():

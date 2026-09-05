@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import types
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -13,6 +14,8 @@ class FakeStore:
         self.visual = {}
         self.vlm = {}
         self.deleted = []
+        self.visual_indexed = 0
+        self.text_indexed = 0
 
     def open(self):
         return self
@@ -21,15 +24,19 @@ class FakeStore:
         return self.visual.get((account_id, image_id))
 
     def index_visual_batch(self, records, account_id, filenames=None, extra_metadata=None):
+        records = list(records)
+        self.visual_indexed += len(records)
         for record in records:
             image_id = record.image_id
             self.visual[(account_id, image_id)] = {
                 "metadata": {"fingerprint": (extra_metadata or {})[image_id]["fingerprint"]}
             }
-        return len(list(records))
+        return len(records)
 
     def index_text_batch(self, records, account_id):
-        return len(list(records))
+        records = list(records)
+        self.text_indexed += len(records)
+        return len(records)
 
     def delete_vlm(self, image_id, account_id):
         self.deleted.append((image_id, account_id))
@@ -64,7 +71,7 @@ class FakeText:
         self.description_calls = 0
 
     def embed_ocr_results(self, records, filenames=None):
-        return []
+        return [SimpleNamespace(image_id="image-1", text_embedding=[0.2], has_text=True, ok=True)]
 
     def embed_text(self, description):
         self.description_calls += 1
@@ -80,6 +87,11 @@ class FakeVlm:
         self.calls += len(records)
         return [{"image_id": r.image_id, "description": "A factual image description."}
                 for r in records]
+
+
+class FailingVlm:
+    def describe_many(self, records):
+        raise RuntimeError("VLM unavailable")
 
 
 def _indexer(tmp_path, monkeypatch):
@@ -122,6 +134,49 @@ def test_changed_image_replaces_vlm_record(tmp_path, monkeypatch):
     assert vlm.calls == 2
     assert len(store.vlm) == 1
     assert store.deleted == [("image-1", "acct-a"), ("image-1", "acct-a")]
+
+
+def test_vlm_failure_does_not_block_normal_indexing(tmp_path, monkeypatch):
+    indexer, _path, store, _text, _vlm, _record = _indexer(tmp_path, monkeypatch)
+    monkeypatch.setattr(indexer, "_vlm_describer", lambda: FailingVlm())
+
+    report = indexer.index_locations([str(tmp_path)], account_id="acct-a")
+
+    assert report.visual_indexed == 1
+    assert report.text_indexed == 1
+    assert store.visual_indexed == 1
+    assert store.text_indexed == 1
+    assert store.vlm == {}
+
+
+def test_vlm_load_failure_is_cached(tmp_path, monkeypatch):
+    from PIL import Image
+    from ml.vlm_description import VLMImageDescriber
+
+    image = tmp_path / "image.jpg"
+    Image.new("RGB", (2, 2), "white").save(image)
+    calls = {"processor": 0}
+
+    class FailingProcessor:
+        @classmethod
+        def from_pretrained(cls, _name):
+            calls["processor"] += 1
+            raise RuntimeError("model unavailable")
+
+    fake_transformers = types.SimpleNamespace(
+        BlipProcessor=FailingProcessor,
+        BlipForConditionalGeneration=FailingProcessor,
+    )
+    fake_torch = types.SimpleNamespace(
+        cuda=types.SimpleNamespace(is_available=lambda: False),
+    )
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+
+    describer = VLMImageDescriber()
+    assert describer.describe_one("image-1", str(image)) is None
+    assert describer.describe_one("image-1", str(image)) is None
+    assert calls["processor"] == 1
 
 
 def test_vlm_record_id_and_read_are_account_scoped():
